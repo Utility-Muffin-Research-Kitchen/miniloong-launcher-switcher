@@ -1,0 +1,172 @@
+#!/bin/sh
+# UMRK_LAUNCHER_SWITCHER_WRAPPER=1
+
+LOG=/userdata/umrk-launcher.log
+MARKER=/mnt/sdcard/.umrk-launcher
+BUNDLE=/mnt/sdcard/umrk-launcher
+BUNDLE_BIN=/mnt/sdcard/umrk-launcher/bin/loong_pangu
+STAGE=/tmp/umrk-launcher
+STAGE_NEW=/tmp/umrk-launcher.new
+STAGE_BIN=/tmp/umrk-launcher/bin/loong_pangu
+STOCK=/loong/loong_pangu.stock.umrk
+STOCK_RUN_DIR=/tmp/umrk-stock-pangu
+STOCK_RUN_BIN=/tmp/umrk-stock-pangu/loong_pangu
+CRASH_STATE=/userdata/umrk-launcher-crash-state
+CRASH_WINDOW_SECONDS=120
+CRASH_THRESHOLD=3
+
+log_msg() {
+    mkdir -p /userdata 2>/dev/null || true
+    printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+now_seconds() {
+    date '+%s' 2>/dev/null || echo 0
+}
+
+disable_marker_for_crash_loop() {
+    stamp="$(now_seconds)"
+    disabled="${MARKER}.disabled.${stamp}"
+    if mv "$MARKER" "$disabled" 2>/dev/null; then
+        log_msg "disabled marker after crash loop: $disabled"
+    else
+        rm -f "$MARKER" 2>/dev/null || true
+        log_msg "removed marker after crash loop"
+    fi
+    rm -f "$CRASH_STATE" 2>/dev/null || true
+}
+
+check_crash_loop() {
+    now="$(now_seconds)"
+    if [ "$now" -le 0 ] 2>/dev/null; then
+        log_msg "crash-loop guard skipped: date seconds unavailable"
+        return 0
+    fi
+
+    first="$now"
+    count=0
+    if [ -f "$CRASH_STATE" ]; then
+        read first count <"$CRASH_STATE" 2>/dev/null || {
+            first="$now"
+            count=0
+        }
+    fi
+
+    case "$first" in *[!0-9]*|'') first="$now" ;; esac
+    case "$count" in *[!0-9]*|'') count=0 ;; esac
+
+    age=$((now - first))
+    if [ "$age" -lt 0 ] || [ "$age" -gt "$CRASH_WINDOW_SECONDS" ]; then
+        first="$now"
+        count=1
+    else
+        count=$((count + 1))
+    fi
+
+    mkdir -p /userdata 2>/dev/null || true
+    printf '%s %s\n' "$first" "$count" >"$CRASH_STATE" 2>/dev/null || true
+
+    if [ "$count" -ge "$CRASH_THRESHOLD" ]; then
+        log_msg "crash-loop guard tripped count=$count window=${CRASH_WINDOW_SECONDS}s"
+        disable_marker_for_crash_loop
+        exec_stock "$@"
+    fi
+}
+
+exec_stock() {
+    if [ ! -x "$STOCK" ]; then
+        log_msg "stock fallback missing or not executable: $STOCK"
+        exit 127
+    fi
+
+    mkdir -p "$STOCK_RUN_DIR" 2>/dev/null || true
+    ln -sf "$STOCK" "$STOCK_RUN_BIN" 2>/dev/null || true
+
+    cd /loong 2>/dev/null || true
+    log_msg "starting stock gui"
+    if [ -x "$STOCK_RUN_BIN" ]; then
+        exec "$STOCK_RUN_BIN" "$@"
+    fi
+    exec "$STOCK" "$@"
+}
+
+kill_stale_custom_launcher() {
+    for name in jawakad jawaka-launcher jawaka-menu; do
+        pids="$(pidof "$name" 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "stopping stale $name pids=$pids"
+            kill $pids 2>/dev/null || true
+        fi
+    done
+
+    sleep 1
+
+    for name in jawakad jawaka-launcher jawaka-menu; do
+        pids="$(pidof "$name" 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "force stopping stale $name pids=$pids"
+            kill -9 $pids 2>/dev/null || true
+        fi
+    done
+}
+
+if [ ! -e "$MARKER" ]; then
+    log_msg "marker absent, using stock gui"
+    rm -f "$CRASH_STATE" 2>/dev/null || true
+    exec_stock "$@"
+fi
+
+check_crash_loop "$@"
+
+if [ ! -f "$BUNDLE_BIN" ]; then
+    log_msg "marker present but launcher binary missing: $BUNDLE_BIN"
+    exec_stock "$@"
+fi
+
+rm -rf "$STAGE_NEW" 2>/dev/null || true
+mkdir -p "$STAGE_NEW" 2>/dev/null || {
+    log_msg "failed to create stage directory: $STAGE_NEW"
+    exec_stock "$@"
+}
+
+if ! cp -R "$BUNDLE/." "$STAGE_NEW/" 2>>"$LOG"; then
+    log_msg "failed to copy launcher bundle from SD"
+    rm -rf "$STAGE_NEW" 2>/dev/null || true
+    exec_stock "$@"
+fi
+
+chmod -R u+rwX,go+rX "$STAGE_NEW" 2>/dev/null || true
+if [ -d "$STAGE_NEW/bin" ]; then
+    chmod 755 "$STAGE_NEW/bin"/* 2>/dev/null || true
+fi
+
+rm -rf "$STAGE" 2>/dev/null || true
+if ! mv "$STAGE_NEW" "$STAGE" 2>>"$LOG"; then
+    log_msg "failed to activate staged launcher bundle"
+    rm -rf "$STAGE_NEW" 2>/dev/null || true
+    exec_stock "$@"
+fi
+
+if [ ! -x "$STAGE_BIN" ]; then
+    log_msg "staged launcher is not executable: $STAGE_BIN"
+    exec_stock "$@"
+fi
+
+killall loong_transition 2>/dev/null || true
+log_msg "dismissed stock boot transition"
+kill_stale_custom_launcher
+log_msg "cleared stale custom launcher processes"
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-/mnt/sdcard}"
+if [ -d "$STAGE/lib" ]; then
+    export LD_LIBRARY_PATH="$STAGE/lib:${LD_LIBRARY_PATH:-}"
+fi
+
+cd "$STAGE" 2>/dev/null || true
+log_msg "starting custom launcher from $STAGE_BIN"
+exec "$STAGE_BIN" "$@"
+
+log_msg "custom launcher exec failed"
+exec_stock "$@"

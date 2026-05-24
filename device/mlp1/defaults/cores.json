@@ -1,0 +1,19 @@
+{
+  "platform": "mlp1",
+  "systems": {
+    "FC": { "core": "fceumm_libretro.so" },
+    "NES": { "core": "fceumm_libretro.so" },
+    "GB": { "core": "gambatte_libretro.so" },
+    "GBC": { "core": "gambatte_libretro.so" },
+    "GBA": { "core": "mgba_libretro.so" },
+    "SFC": { "core": "snes9x_libretro.so" },
+    "SNES": { "core": "snes9x_libretro.so" },
+    "MD": { "core": "genesis_plus_gx_libretro.so" },
+    "GEN": { "core": "genesis_plus_gx_libretro.so" },
+    "GENESIS": { "core": "genesis_plus_gx_libretro.so" },
+    "GG": { "core": "genesis_plus_gx_libretro.so" },
+    "MS": { "core": "genesis_plus_gx_libretro.so" },
+    "PS": { "core": "pcsx_rearmed_libretro.so" },
+    "PSX": { "core": "pcsx_rearmed_libretro.so" }
+  }
+}

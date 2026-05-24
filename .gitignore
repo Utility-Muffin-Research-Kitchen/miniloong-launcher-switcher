@@ -1,0 +1,4 @@
+build/
+launcher_switcher_sd/
+__pycache__/
+*.zip

@@ -1,0 +1,67 @@
+#!/bin/sh
+# UMRK_JAWAKA_ENTRYPOINT=1
+
+LOG=/userdata/umrk-launcher.log
+
+log_msg() {
+    mkdir -p /userdata 2>/dev/null || true
+    printf '[%s] jawaka-entrypoint: %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." 2>/dev/null && pwd)"
+if [ -z "$ROOT" ] || [ ! -d "$ROOT" ]; then
+    log_msg "could not resolve bundle root from $0"
+    exit 127
+fi
+
+for bin in jawakad jawaka-launcher jawaka-menu; do
+    if [ ! -x "$ROOT/bin/$bin" ]; then
+        log_msg "missing executable: $ROOT/bin/$bin"
+        exit 127
+    fi
+done
+
+if [ ! -d /mnt/sdcard ]; then
+    log_msg "sd root missing: /mnt/sdcard"
+    exit 127
+fi
+
+RUNTIME_DIR="${JAWAKA_RUNTIME_DIR:-/tmp/jawaka-runtime}"
+mkdir -p "$RUNTIME_DIR" /userdata 2>/dev/null || true
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+export CAT_WINDOW_WIDTH="${CAT_WINDOW_WIDTH:-960}"
+export CAT_WINDOW_HEIGHT="${CAT_WINDOW_HEIGHT:-720}"
+export CAT_THEMES_DIR="${CAT_THEMES_DIR:-$ROOT/res/themes}"
+export CAT_FONTS_DIR="${CAT_FONTS_DIR:-$ROOT/res}"
+export CAT_STATUS_ASSETS_DIR="${CAT_STATUS_ASSETS_DIR:-$ROOT/res/assets}"
+export JAWAKA_RUNTIME_DIR="$RUNTIME_DIR"
+export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-/mnt/sdcard}"
+export JAWAKA_THEME="${JAWAKA_THEME:-Jawaka-Tabs}"
+
+if [ -d "$ROOT/lib" ]; then
+    export LD_LIBRARY_PATH="$ROOT/lib:${LD_LIBRARY_PATH:-}"
+fi
+
+cd "$ROOT" 2>/dev/null || {
+    log_msg "could not cd to bundle root: $ROOT"
+    exit 127
+}
+
+DAEMON_RUN="$JAWAKA_RUNTIME_DIR/loong_pangu"
+cp -f "$ROOT/bin/jawakad" "$DAEMON_RUN" 2>/dev/null || {
+    log_msg "could not prepare daemon executable: $DAEMON_RUN"
+    exit 127
+}
+for child in jawaka-launcher jawaka-menu; do
+    cp -f "$ROOT/bin/$child" "$JAWAKA_RUNTIME_DIR/$child" 2>/dev/null || {
+        log_msg "could not prepare child executable: $JAWAKA_RUNTIME_DIR/$child"
+        exit 127
+    }
+done
+chmod 755 "$DAEMON_RUN" "$JAWAKA_RUNTIME_DIR/jawaka-launcher" "$JAWAKA_RUNTIME_DIR/jawaka-menu" 2>/dev/null || true
+
+log_msg "exec daemon as loong_pangu root=$ROOT sd=$JAWAKA_SDCARD_ROOT runtime=$JAWAKA_RUNTIME_DIR"
+exec >>"$LOG" 2>&1
+exec "$DAEMON_RUN" "$@"
