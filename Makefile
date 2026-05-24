@@ -5,6 +5,12 @@ TOOLCHAIN_DIR ?= /Volumes/Storage/UMRK/mlp1-toolchain
 TOOLCHAIN_IMAGE ?= ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:local
 CATASTROPHE_DIR ?= /Volumes/Storage/UMRK/Catastrophe
 JAWAKA_DIR ?= /Volumes/Storage/UMRK/Jawaka
+RETROARCH_BUILDS_DIR ?= /Volumes/Storage/UMRK/retroarch-builds
+CORES_SPRUCE_DIR ?= /Volumes/Storage/UMRK/Cores-spruce
+MLP1_RETROARCH_BIN ?= $(RETROARCH_BUILDS_DIR)/output/mlp1/bin/retroarch
+MLP1_CORES_DIR ?= $(CORES_SPRUCE_DIR)/output/mlp1/cores
+MLP1_INFO_DIR ?= $(CORES_SPRUCE_DIR)/output/mlp1/info
+MLP1_VERTICAL_CORE ?= genesis_plus_gx
 
 POC_BIN := $(BUILD)/bin/loong_pangu
 PACKAGE_ROOT := $(BUILD)/package
@@ -13,7 +19,7 @@ PLATFORM_PACKAGE_DIR := $(PACKAGE_ROOT)/UMRK/mlp1
 SD_DIR := $(BUILD)/sd
 JAWAKA_BUILD_DIR := $(JAWAKA_DIR)/build/mlp1
 
-.PHONY: all image poc target-poc package jawaka-build jawaka-package sd-payload sd-payload-marked jawaka-sd-payload jawaka-sd-payload-marked adb-poc-test adb-install-wrapper adb-stage-sd-bundle adb-stage-sd-bundle-no-marker adb-stage-jawaka-sd-bundle adb-stage-jawaka-sd-bundle-no-marker adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs adb-uninstall-wrapper clean
+.PHONY: all image poc target-poc package jawaka-build retroarch-mlp1 cores-mlp1 jawaka-package jawaka-mlp1-vertical-slice sd-payload sd-payload-marked jawaka-sd-payload jawaka-sd-payload-marked adb-poc-test adb-install-wrapper adb-stage-sd-bundle adb-stage-sd-bundle-no-marker adb-stage-jawaka-sd-bundle adb-stage-jawaka-sd-bundle-no-marker adb-stage-jawaka-mlp1-vertical-slice adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs adb-uninstall-wrapper clean
 
 all: package sd-payload
 
@@ -51,21 +57,46 @@ package: poc
 jawaka-build:
 	$(MAKE) -C "$(JAWAKA_DIR)" mlp1
 
+retroarch-mlp1:
+	"$(RETROARCH_BUILDS_DIR)/build-mlp1.sh"
+
+cores-mlp1:
+	"$(CORES_SPRUCE_DIR)/build-mlp1.sh" "$(MLP1_VERTICAL_CORE)"
+
 jawaka-package: jawaka-build
 	@rm -rf "$(PACKAGE_ROOT)"
 	@mkdir -p "$(PACKAGE_DIR)/bin" "$(PACKAGE_DIR)/res" "$(PLATFORM_PACKAGE_DIR)"
-	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawakad" "$(PACKAGE_DIR)/bin/jawakad"
+	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawakad" "$(PACKAGE_DIR)/bin/loong_pangu"
 	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawaka-launcher" "$(PACKAGE_DIR)/bin/jawaka-launcher"
 	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawaka-menu" "$(PACKAGE_DIR)/bin/jawaka-menu"
-	@cp -f "device/jawaka_loong_pangu.entrypoint" "$(PACKAGE_DIR)/bin/loong_pangu"
 	@chmod 755 "$(PACKAGE_DIR)/bin/"*
 	@cp -Rf "$(JAWAKA_DIR)/res/themes" "$(PACKAGE_DIR)/res/"
 	@cp -Rf "$(CATASTROPHE_DIR)/res/fonts" "$(PACKAGE_DIR)/res/"
 	@cp -f "$(CATASTROPHE_DIR)/res/font.ttf" "$(PACKAGE_DIR)/res/font.ttf"
 	@if [ -d "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" ]; then cp -Rf "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" "$(PACKAGE_DIR)/res/assets"; fi
 	@cp -Rf "device/mlp1/." "$(PLATFORM_PACKAGE_DIR)/"
+	@if [ -f "$(MLP1_RETROARCH_BIN)" ]; then \
+		mkdir -p "$(PLATFORM_PACKAGE_DIR)/bin"; \
+		cp -f "$(MLP1_RETROARCH_BIN)" "$(PLATFORM_PACKAGE_DIR)/bin/retroarch"; \
+		chmod 755 "$(PLATFORM_PACKAGE_DIR)/bin/retroarch"; \
+	else \
+		echo "warning: MLP1 RetroArch not found at $(MLP1_RETROARCH_BIN); launches will fail clear until it is built."; \
+	fi
+	@if [ -d "$(MLP1_CORES_DIR)" ]; then \
+		mkdir -p "$(PLATFORM_PACKAGE_DIR)/cores"; \
+		find "$(MLP1_CORES_DIR)" -maxdepth 1 -type f -name '*_libretro.so' -exec cp -f {} "$(PLATFORM_PACKAGE_DIR)/cores/" \;; \
+		chmod 755 "$(PLATFORM_PACKAGE_DIR)/cores/"*_libretro.so 2>/dev/null || true; \
+	else \
+		echo "warning: MLP1 cores not found at $(MLP1_CORES_DIR); launches will fail clear until cores are built."; \
+	fi
+	@if [ -d "$(MLP1_INFO_DIR)" ]; then \
+		mkdir -p "$(PLATFORM_PACKAGE_DIR)/info"; \
+		find "$(MLP1_INFO_DIR)" -maxdepth 1 -type f -name '*_libretro.info' -exec cp -f {} "$(PLATFORM_PACKAGE_DIR)/info/" \;; \
+	fi
 	@printf 'Jawaka MLP1 launcher bundle\n' > "$(PACKAGE_DIR)/README.txt"
 	@find "$(PACKAGE_ROOT)" -type f -print | sort
+
+jawaka-mlp1-vertical-slice: retroarch-mlp1 cores-mlp1 jawaka-sd-payload
 
 sd-payload: package
 	@rm -rf "$(SD_DIR)"
@@ -105,6 +136,9 @@ adb-stage-jawaka-sd-bundle: jawaka-package
 
 adb-stage-jawaka-sd-bundle-no-marker: jawaka-package
 	scripts/adb-stage-sd-bundle.sh --no-marker
+
+adb-stage-jawaka-mlp1-vertical-slice: jawaka-mlp1-vertical-slice
+	scripts/adb-stage-sd-bundle.sh --marker
 
 adb-enable-marker:
 	scripts/adb-set-marker.sh on

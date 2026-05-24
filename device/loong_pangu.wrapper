@@ -2,15 +2,15 @@
 # UMRK_LAUNCHER_SWITCHER_WRAPPER=1
 
 LOG=/userdata/umrk-launcher.log
+SD_MOUNT=/mnt/sdcard
 MARKER=/mnt/sdcard/.umrk-launcher
 BUNDLE=/mnt/sdcard/umrk-launcher
 BUNDLE_BIN=/mnt/sdcard/umrk-launcher/bin/loong_pangu
-STAGE=/tmp/umrk-launcher
-STAGE_NEW=/tmp/umrk-launcher.new
-STAGE_BIN=/tmp/umrk-launcher/bin/loong_pangu
+PLATFORM_ROOT=/mnt/sdcard/UMRK/mlp1
 STOCK=/loong/loong_pangu.stock.umrk
 STOCK_RUN_DIR=/tmp/umrk-stock-pangu
 STOCK_RUN_BIN=/tmp/umrk-stock-pangu/loong_pangu
+RUNTIME_DIR=/tmp/jawaka-runtime
 CRASH_STATE=/userdata/umrk-launcher-crash-state
 CRASH_WINDOW_SECONDS=120
 CRASH_THRESHOLD=3
@@ -24,16 +24,124 @@ now_seconds() {
     date '+%s' 2>/dev/null || echo 0
 }
 
-disable_marker_for_crash_loop() {
+sd_mount_options() {
+    awk -v mountpoint="$SD_MOUNT" '$2 == mountpoint { print $4; exit }' /proc/mounts 2>/dev/null
+}
+
+option_list_has() {
+    case ",$1," in
+        *",$2,"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+sd_options_for_mode() {
+    mode="$1"
+    opts="$(sd_mount_options)"
+    if [ -z "$opts" ]; then
+        return 1
+    fi
+
+    out=""
+    old_ifs="$IFS"
+    IFS=,
+    set -- $opts
+    IFS="$old_ifs"
+
+    for opt in "$@"; do
+        case "$opt" in
+            exec|noexec)
+                opt="$mode"
+                ;;
+            suid|nosuid)
+                opt=nosuid
+                ;;
+            '')
+                continue
+                ;;
+        esac
+
+        if ! option_list_has "$out" "$opt"; then
+            out="${out:+$out,}$opt"
+        fi
+    done
+
+    if ! option_list_has "$out" "$mode"; then
+        out="${out:+$out,}$mode"
+    fi
+    if ! option_list_has "$out" nosuid; then
+        out="${out:+$out,}nosuid"
+    fi
+
+    printf '%s\n' "$out"
+}
+
+sd_is_noexec() {
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] && option_list_has "$opts" noexec
+}
+
+sd_is_exec() {
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] && ! option_list_has "$opts" noexec
+}
+
+remount_sd_mode() {
+    mode="$1"
+    opts="$(sd_options_for_mode "$mode")" || {
+        log_msg "could not read $SD_MOUNT mount options"
+        return 1
+    }
+
+    log_msg "remounting $SD_MOUNT with options: $opts"
+    if ! mount -o "remount,$opts" "$SD_MOUNT" 2>>"$LOG"; then
+        log_msg "failed to remount $SD_MOUNT with options: $opts"
+        return 1
+    fi
+
+    if [ "$mode" = exec ] && ! sd_is_exec; then
+        log_msg "$SD_MOUNT still mounted noexec after exec remount"
+        return 1
+    fi
+    if [ "$mode" = noexec ] && ! sd_is_noexec; then
+        log_msg "$SD_MOUNT still mounted exec after noexec remount"
+        return 1
+    fi
+
+    return 0
+}
+
+restore_sd_noexec() {
+    opts="$(sd_mount_options)"
+    if [ -z "$opts" ]; then
+        log_msg "$SD_MOUNT is not mounted; cannot restore noexec"
+        return 0
+    fi
+    if option_list_has "$opts" noexec; then
+        return 0
+    fi
+    remount_sd_mode noexec || log_msg "best-effort noexec restore failed"
+}
+
+disable_marker() {
+    reason="$1"
     stamp="$(now_seconds)"
     disabled="${MARKER}.disabled.${stamp}"
-    if mv "$MARKER" "$disabled" 2>/dev/null; then
-        log_msg "disabled marker after crash loop: $disabled"
+    if [ -e "$MARKER" ] && mv "$MARKER" "$disabled" 2>/dev/null; then
+        log_msg "$reason: disabled marker: $disabled"
     else
         rm -f "$MARKER" 2>/dev/null || true
-        log_msg "removed marker after crash loop"
+        log_msg "$reason: removed marker"
     fi
     rm -f "$CRASH_STATE" 2>/dev/null || true
+}
+
+disable_marker_for_crash_loop() {
+    disable_marker "crash-loop guard"
+}
+
+disable_marker_for_remount_failure() {
+    disable_marker "SD exec remount failure"
 }
 
 check_crash_loop() {
@@ -74,6 +182,9 @@ check_crash_loop() {
 }
 
 exec_stock() {
+    restore_sd_noexec
+    kill_stale_custom_launcher
+
     if [ ! -x "$STOCK" ]; then
         log_msg "stock fallback missing or not executable: $STOCK"
         exit 127
@@ -110,6 +221,39 @@ kill_stale_custom_launcher() {
     done
 }
 
+preflight_jawaka_bundle() {
+    for bin in "$BUNDLE_BIN" "$BUNDLE/bin/jawaka-launcher" "$BUNDLE/bin/jawaka-menu"; do
+        if [ ! -f "$bin" ]; then
+            log_msg "marker present but launcher executable missing: $bin"
+            return 1
+        fi
+        if [ ! -x "$bin" ]; then
+            log_msg "marker present but launcher executable is not executable: $bin"
+            return 1
+        fi
+    done
+
+    if [ ! -f "$BUNDLE/res/font.ttf" ]; then
+        log_msg "marker present but launcher font missing: $BUNDLE/res/font.ttf"
+        return 1
+    fi
+    if [ ! -d "$BUNDLE/res/themes" ]; then
+        log_msg "marker present but launcher themes missing: $BUNDLE/res/themes"
+        return 1
+    fi
+    if [ ! -d "$BUNDLE/res/assets" ]; then
+        log_msg "marker present but launcher status assets missing: $BUNDLE/res/assets"
+        return 1
+    fi
+
+    mkdir -p "$RUNTIME_DIR" /userdata 2>/dev/null || {
+        log_msg "failed to create runtime directory: $RUNTIME_DIR"
+        return 1
+    }
+
+    return 0
+}
+
 if [ ! -e "$MARKER" ]; then
     log_msg "marker absent, using stock gui"
     rm -f "$CRASH_STATE" 2>/dev/null || true
@@ -123,32 +267,18 @@ if [ ! -f "$BUNDLE_BIN" ]; then
     exec_stock "$@"
 fi
 
-rm -rf "$STAGE_NEW" 2>/dev/null || true
-mkdir -p "$STAGE_NEW" 2>/dev/null || {
-    log_msg "failed to create stage directory: $STAGE_NEW"
-    exec_stock "$@"
-}
-
-if ! cp -R "$BUNDLE/." "$STAGE_NEW/" 2>>"$LOG"; then
-    log_msg "failed to copy launcher bundle from SD"
-    rm -rf "$STAGE_NEW" 2>/dev/null || true
+if ! remount_sd_mode exec; then
+    disable_marker_for_remount_failure
     exec_stock "$@"
 fi
 
-chmod -R u+rwX,go+rX "$STAGE_NEW" 2>/dev/null || true
-if [ -d "$STAGE_NEW/bin" ]; then
-    chmod 755 "$STAGE_NEW/bin"/* 2>/dev/null || true
-fi
-
-rm -rf "$STAGE" 2>/dev/null || true
-if ! mv "$STAGE_NEW" "$STAGE" 2>>"$LOG"; then
-    log_msg "failed to activate staged launcher bundle"
-    rm -rf "$STAGE_NEW" 2>/dev/null || true
+if ! sd_is_exec; then
+    log_msg "$SD_MOUNT is noexec after remount verification"
+    disable_marker_for_remount_failure
     exec_stock "$@"
 fi
 
-if [ ! -x "$STAGE_BIN" ]; then
-    log_msg "staged launcher is not executable: $STAGE_BIN"
+if ! preflight_jawaka_bundle; then
     exec_stock "$@"
 fi
 
@@ -159,14 +289,28 @@ log_msg "cleared stale custom launcher processes"
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
-export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-/mnt/sdcard}"
-if [ -d "$STAGE/lib" ]; then
-    export LD_LIBRARY_PATH="$STAGE/lib:${LD_LIBRARY_PATH:-}"
+export CAT_WINDOW_WIDTH="${CAT_WINDOW_WIDTH:-960}"
+export CAT_WINDOW_HEIGHT="${CAT_WINDOW_HEIGHT:-720}"
+export CAT_THEMES_DIR="${CAT_THEMES_DIR:-$BUNDLE/res/themes}"
+export CAT_FONTS_DIR="${CAT_FONTS_DIR:-$BUNDLE/res}"
+export CAT_STATUS_ASSETS_DIR="${CAT_STATUS_ASSETS_DIR:-$BUNDLE/res/assets}"
+export JAWAKA_RUNTIME_DIR="${JAWAKA_RUNTIME_DIR:-$RUNTIME_DIR}"
+export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-$SD_MOUNT}"
+export JAWAKA_RETROARCH_BIN="${JAWAKA_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
+export JAWAKA_RETROARCH_CORES_DIR="${JAWAKA_RETROARCH_CORES_DIR:-$PLATFORM_ROOT/cores}"
+export JAWAKA_THEME="${JAWAKA_THEME:-Jawaka-Tabs}"
+if [ -d "$BUNDLE/lib" ]; then
+    export LD_LIBRARY_PATH="$BUNDLE/lib:${LD_LIBRARY_PATH:-}"
 fi
 
-cd "$STAGE" 2>/dev/null || true
-log_msg "starting custom launcher from $STAGE_BIN"
-exec "$STAGE_BIN" "$@"
+cd "$BUNDLE" 2>/dev/null || {
+    log_msg "could not cd to launcher bundle: $BUNDLE"
+    exec_stock "$@"
+}
 
-log_msg "custom launcher exec failed"
+log_msg "starting custom launcher directly from SD: $BUNDLE_BIN"
+exec >>"$LOG" 2>&1
+exec "$BUNDLE_BIN" "$@"
+
+log_msg "custom launcher exec failed: $BUNDLE_BIN"
 exec_stock "$@"

@@ -27,16 +27,19 @@ At boot, the wrapper checks:
 /mnt/sdcard/umrk-launcher/bin/loong_pangu
 ```
 
-If both exist, it copies the SD bundle to `/tmp/umrk-launcher` and execs:
+If both exist, it remounts the SD card as executable and execs:
 
 ```text
-/tmp/umrk-launcher/bin/loong_pangu
+/mnt/sdcard/umrk-launcher/bin/loong_pangu
 ```
 
-If the marker is absent, the SD card is absent, or the bundle is incomplete, it
-starts the stock GUI. The wrapper starts the stock backup through a temporary
-`loong_pangu` symlink so the process still looks like the normal stock GUI to
-stock supervision code.
+When the marker is present, the wrapper first remounts `/mnt/sdcard` with
+`exec` while preserving the stock mount options. When the marker is absent or
+the wrapper falls back to stock, it best-effort restores the StockOS `noexec`
+SD mount. If the marker is absent, the SD card is absent, remounting fails, or
+the bundle is incomplete, it starts the stock GUI. The wrapper starts the stock
+backup through a temporary `loong_pangu` symlink so the process still looks like
+the normal stock GUI to stock supervision code.
 
 ## Build
 
@@ -82,7 +85,6 @@ The Jawaka payload installs the switcher wrapper and stages:
 build/sd/
   umrk-launcher/
     bin/loong_pangu
-    bin/jawakad
     bin/jawaka-launcher
     bin/jawaka-menu
     res/
@@ -169,7 +171,9 @@ make adb-restart-loong
 
 The installed switcher wrapper has crash-loop protection. If the marker is
 present and the custom launcher path is entered repeatedly within a short
-window, it disables the marker and starts stock.
+window, it disables the marker and starts stock. Remount failure also disables
+the marker immediately, because the direct-SD Jawaka path cannot run safely
+while `/mnt/sdcard` is `noexec`.
 
 ## SD Install
 
