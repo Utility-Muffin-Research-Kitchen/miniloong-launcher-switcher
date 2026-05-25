@@ -1,65 +1,1068 @@
 {
+  "version": 2,
   "platform": "mlp1",
-  "systems": {
-    "FC": { "core": "fceumm_libretro.so" },
-    "NES": { "core": "fceumm_libretro.so" },
-    "GB": { "core": "gambatte_libretro.so" },
-    "GBC": { "core": "gambatte_libretro.so" },
-    "GBA": { "core": "mgba_libretro.so" },
-    "SFC": { "core": "snes9x_libretro.so" },
-    "SNES": { "core": "snes9x_libretro.so" },
-    "MD": { "core": "genesis_plus_gx_libretro.so" },
-    "GEN": { "core": "genesis_plus_gx_libretro.so" },
-    "GENESIS": { "core": "genesis_plus_gx_libretro.so" },
-    "MD32X": { "core": "genesis_plus_gx_libretro.so" },
-    "32X": { "core": "genesis_plus_gx_libretro.so" },
-    "GG": { "core": "genesis_plus_gx_libretro.so" },
-    "MS": { "core": "genesis_plus_gx_libretro.so" },
-    "PS": { "core": "pcsx_rearmed_libretro.so" },
-    "PSX": { "core": "pcsx_rearmed_libretro.so" },
-    "NGP": { "core": "mednafen_ngp_libretro.so" },
-    "NGPC": { "core": "mednafen_ngp_libretro.so" },
-    "PCE": { "core": "mednafen_pce_fast_libretro.so" },
-    "TG16": { "core": "mednafen_pce_fast_libretro.so" },
-    "WS": { "core": "mednafen_wswan_libretro.so" },
-    "WSC": { "core": "mednafen_wswan_libretro.so" },
-    "N64": { "core": "mupen64plus_next_libretro.so" },
-    "DC": { "core": "flycast_libretro.so" },
-    "SATURN": { "core": "yabasanshiro_libretro.so" },
-    "ARCADE": { "core": "fbneo_libretro.so" },
-    "MAME": { "core": "mame_libretro.so" },
-    "MAME2003": { "core": "mame2003_plus_libretro.so" },
-    "MAME2010": { "core": "mame2010_libretro.so" },
-    "ATARI2600": { "core": "stella2014_libretro.so" },
-    "LYNX": { "core": "handy_libretro.so" },
-    "PROSYSTEM": { "core": "prosystem_libretro.so" }
-  },
-  "stock_parity_core_names": {
-    "2048_libretro.so": "2048_libretro.so",
-    "beetle_ngp_libretro.so": "mednafen_ngp_libretro.so",
-    "beetle_pce_fast_libretro.so": "mednafen_pce_fast_libretro.so",
-    "beetle_wswan_libretro.so": "mednafen_wswan_libretro.so",
-    "dosbox_pure_libretro.so": "dosbox_pure_libretro.so",
-    "easyrpg_libretro.so": "easyrpg_libretro.so",
-    "fake08_libretro.so": "fake08_libretro.so",
-    "fbalpha2012_libretro.so": "fbalpha2012_libretro.so",
-    "fbneo_libretro.so": "fbneo_libretro.so",
-    "fceumm_libretro.so": "fceumm_libretro.so",
-    "flycast_libretro.so": "flycast_libretro.so",
-    "gambatte_libretro.so": "gambatte_libretro.so",
-    "genesis_plus_gx_libretro.so": "genesis_plus_gx_libretro.so",
-    "gw_libretro.so": "gw_libretro.so",
-    "handy_libretro.so": "handy_libretro.so",
-    "mame2003_plus_libretro.so": "mame2003_plus_libretro.so",
-    "mame2010_libretro.so": "mame2010_libretro.so",
-    "mamearcade_libretro.so": "mame_libretro.so",
-    "mgba_libretro.so": "mgba_libretro.so",
-    "mupen64plus_next_libretro.so": "mupen64plus_next_libretro.so",
-    "pcsx_rearmed_libretro.so": "pcsx_rearmed_libretro.so",
-    "prosystem_libretro.so": "prosystem_libretro.so",
-    "snes9x_libretro.so": "snes9x_libretro.so",
-    "stella2014_libretro.so": "stella2014_libretro.so",
-    "swanstation_libretro.so": "swanstation_libretro.so",
-    "yabasanshiro_libretro.so": "yabasanshiro_libretro.so"
-  }
+  "cores": [
+    {
+      "id": "2048",
+      "display_name": "2048",
+      "type": "retroarch",
+      "libretro_name": "2048",
+      "file_name": "2048_libretro.so",
+      "config_folder": "2048",
+      "info_name": "2048_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "chimerasnes",
+      "display_name": "ChimeraSNES",
+      "type": "retroarch",
+      "libretro_name": "chimerasnes",
+      "file_name": "chimerasnes_libretro.so",
+      "config_folder": "ChimeraSNES-64",
+      "info_name": "chimerasnes_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "dosbox_pure",
+      "display_name": "DOSBox Pure",
+      "type": "retroarch",
+      "libretro_name": "dosbox_pure",
+      "file_name": "dosbox_pure_libretro.so",
+      "config_folder": "DOSBox",
+      "info_name": "dosbox_pure_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "easyrpg",
+      "display_name": "EasyRPG",
+      "type": "retroarch",
+      "libretro_name": "easyrpg",
+      "file_name": "easyrpg_libretro.so",
+      "config_folder": "EasyRPG Player",
+      "info_name": "easyrpg_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "fake08",
+      "display_name": "FAKE-08",
+      "type": "retroarch",
+      "libretro_name": "fake08",
+      "file_name": "fake08_libretro.so",
+      "config_folder": "fake-08-64",
+      "info_name": "fake08_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "fbalpha2012",
+      "display_name": "FinalBurn Alpha 2012",
+      "type": "retroarch",
+      "libretro_name": "fbalpha2012",
+      "file_name": "fbalpha2012_libretro.so",
+      "config_folder": "FB Alpha 2012",
+      "info_name": "fbalpha2012_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "fbalpha2012_cps1",
+      "display_name": "FBA 2012 CPS1",
+      "type": "retroarch",
+      "libretro_name": "fbalpha2012_cps1",
+      "file_name": "fbalpha2012_cps1_libretro.so",
+      "config_folder": "Fbalpha2012 Cps1",
+      "info_name": "fbalpha2012_cps1_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "fbalpha2012_cps2",
+      "display_name": "FBA 2012 CPS2",
+      "type": "retroarch",
+      "libretro_name": "fbalpha2012_cps2",
+      "file_name": "fbalpha2012_cps2_libretro.so",
+      "config_folder": "Fbalpha2012 Cps2",
+      "info_name": "fbalpha2012_cps2_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "fbalpha2012_cps3",
+      "display_name": "FBA 2012 CPS3",
+      "type": "retroarch",
+      "libretro_name": "fbalpha2012_cps3",
+      "file_name": "fbalpha2012_cps3_libretro.so",
+      "config_folder": "Fbalpha2012 Cps3",
+      "info_name": "fbalpha2012_cps3_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "fbneo",
+      "display_name": "FinalBurn Neo",
+      "type": "retroarch",
+      "libretro_name": "fbneo",
+      "file_name": "fbneo_libretro.so",
+      "config_folder": "FinalBurn Neo",
+      "info_name": "fbneo_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "fceumm",
+      "display_name": "FCEUmm",
+      "type": "retroarch",
+      "libretro_name": "fceumm",
+      "file_name": "fceumm_libretro.so",
+      "config_folder": "FCEUmm",
+      "info_name": "fceumm_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "flycast",
+      "display_name": "Flycast",
+      "type": "retroarch",
+      "libretro_name": "flycast",
+      "file_name": "flycast_libretro.so",
+      "config_folder": "Flycast",
+      "info_name": "flycast_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "gambatte",
+      "display_name": "Gambatte",
+      "type": "retroarch",
+      "libretro_name": "gambatte",
+      "file_name": "gambatte_libretro.so",
+      "config_folder": "Gambatte",
+      "info_name": "gambatte_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "gearboy",
+      "display_name": "Gearboy",
+      "type": "retroarch",
+      "libretro_name": "gearboy",
+      "file_name": "gearboy_libretro.so",
+      "config_folder": "Gearboy",
+      "info_name": "gearboy_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "gearsystem",
+      "display_name": "Gearsystem",
+      "type": "retroarch",
+      "libretro_name": "gearsystem",
+      "file_name": "gearsystem_libretro.so",
+      "config_folder": "Gearsystem",
+      "info_name": "gearsystem_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "genesis_plus_gx",
+      "display_name": "Genesis Plus GX",
+      "type": "retroarch",
+      "libretro_name": "genesis_plus_gx",
+      "file_name": "genesis_plus_gx_libretro.so",
+      "config_folder": "Genesis Plus GX",
+      "info_name": "genesis_plus_gx_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "gpsp",
+      "display_name": "gpSP",
+      "type": "retroarch",
+      "libretro_name": "gpsp",
+      "file_name": "gpsp_libretro.so",
+      "config_folder": "gpSP",
+      "info_name": "gpsp_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "gw",
+      "display_name": "Game & Watch",
+      "type": "retroarch",
+      "libretro_name": "gw",
+      "file_name": "gw_libretro.so",
+      "config_folder": "GW",
+      "info_name": "gw_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "handy",
+      "display_name": "Handy",
+      "type": "retroarch",
+      "libretro_name": "handy",
+      "file_name": "handy_libretro.so",
+      "config_folder": "Handy",
+      "info_name": "handy_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "km_duckswanstation_xtreme_amped",
+      "display_name": "DuckSwanStation Xtreme Amped",
+      "type": "retroarch",
+      "libretro_name": "km_duckswanstation_xtreme_amped",
+      "file_name": "km_duckswanstation_xtreme_amped_libretro.so",
+      "config_folder": "DuckSwanStation Xtreme Amped",
+      "info_name": "km_duckswanstation_xtreme_amped_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "km_flycast_xtreme",
+      "display_name": "Flycast Xtreme",
+      "type": "retroarch",
+      "libretro_name": "km_flycast_xtreme",
+      "file_name": "km_flycast_xtreme_libretro.so",
+      "config_folder": "Flycast Xtreme",
+      "info_name": "km_flycast_xtreme_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "km_ludicrousn64_2k22_xtreme_amped",
+      "display_name": "LudicrousN64 2K22 Xtreme Amped",
+      "type": "retroarch",
+      "libretro_name": "km_ludicrousn64_2k22_xtreme_amped",
+      "file_name": "km_ludicrousn64_2k22_xtreme_amped_libretro.so",
+      "config_folder": "LudicrousN64 2K22 Xtreme Amped",
+      "info_name": "km_ludicrousn64_2k22_xtreme_amped_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "km_mame2003_xtreme",
+      "display_name": "MAME 2003 Xtreme",
+      "type": "retroarch",
+      "libretro_name": "km_mame2003_xtreme",
+      "file_name": "km_mame2003_xtreme_libretro.so",
+      "config_folder": "Km Mame2003 Xtreme",
+      "info_name": "km_mame2003_xtreme_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "km_parallel_n64_xtreme_amped_turbo",
+      "display_name": "ParaLLEl N64 Xtreme Amped Turbo",
+      "type": "retroarch",
+      "libretro_name": "km_parallel_n64_xtreme_amped_turbo",
+      "file_name": "km_parallel_n64_xtreme_amped_turbo_libretro.so",
+      "config_folder": "ParaLLEl N64 Xtreme Amped Turbo",
+      "info_name": "km_parallel_n64_xtreme_amped_turbo_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mame",
+      "display_name": "Mame",
+      "type": "retroarch",
+      "libretro_name": "mame",
+      "file_name": "mame_libretro.so",
+      "config_folder": "Mame",
+      "info_name": "mame_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mame2000",
+      "display_name": "MAME 2000",
+      "type": "retroarch",
+      "libretro_name": "mame2000",
+      "file_name": "mame2000_libretro.so",
+      "config_folder": "Mame2000",
+      "info_name": "mame2000_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mame2003",
+      "display_name": "MAME 2003",
+      "type": "retroarch",
+      "libretro_name": "mame2003",
+      "file_name": "mame2003_libretro.so",
+      "config_folder": "Mame2003",
+      "info_name": "mame2003_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mame2003_midway",
+      "display_name": "MAME 2003 Midway",
+      "type": "retroarch",
+      "libretro_name": "mame2003_midway",
+      "file_name": "mame2003_midway_libretro.so",
+      "config_folder": "Mame2003 Midway",
+      "info_name": "mame2003_midway_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mame2003_plus",
+      "display_name": "MAME 2003-Plus",
+      "type": "retroarch",
+      "libretro_name": "mame2003_plus",
+      "file_name": "mame2003_plus_libretro.so",
+      "config_folder": "MAME 2003-Plus",
+      "info_name": "mame2003_plus_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mame2010",
+      "display_name": "Mame2010",
+      "type": "retroarch",
+      "libretro_name": "mame2010",
+      "file_name": "mame2010_libretro.so",
+      "config_folder": "Mame2010",
+      "info_name": "mame2010_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mba_mini",
+      "display_name": "M.B.A mini",
+      "type": "retroarch",
+      "libretro_name": "mba_mini",
+      "file_name": "mba_mini_libretro.so",
+      "config_folder": "Mba Mini",
+      "info_name": "mba_mini_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mednafen_lynx",
+      "display_name": "Beetle Lynx",
+      "type": "retroarch",
+      "libretro_name": "mednafen_lynx",
+      "file_name": "mednafen_lynx_libretro.so",
+      "config_folder": "Beetle Lynx",
+      "info_name": "mednafen_lynx_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mednafen_ngp",
+      "display_name": "Beetle NeoGeo Pocket",
+      "type": "retroarch",
+      "libretro_name": "mednafen_ngp",
+      "file_name": "mednafen_ngp_libretro.so",
+      "config_folder": "Beetle NeoPop",
+      "info_name": "mednafen_ngp_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mednafen_pce_fast",
+      "display_name": "Beetle PCE FAST",
+      "type": "retroarch",
+      "libretro_name": "mednafen_pce_fast",
+      "file_name": "mednafen_pce_fast_libretro.so",
+      "config_folder": "Beetle PCE Fast",
+      "info_name": "mednafen_pce_fast_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mednafen_supafaust",
+      "display_name": "Beetle Supafaust",
+      "type": "retroarch",
+      "libretro_name": "mednafen_supafaust",
+      "file_name": "mednafen_supafaust_libretro.so",
+      "config_folder": "Supafaust",
+      "info_name": "mednafen_supafaust_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mednafen_wswan",
+      "display_name": "Beetle Cygne",
+      "type": "retroarch",
+      "libretro_name": "mednafen_wswan",
+      "file_name": "mednafen_wswan_libretro.so",
+      "config_folder": "Beetle WonderSwan",
+      "info_name": "mednafen_wswan_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mgba",
+      "display_name": "mGBA",
+      "type": "retroarch",
+      "libretro_name": "mgba",
+      "file_name": "mgba_libretro.so",
+      "config_folder": "mGBA",
+      "info_name": "mgba_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "mupen64plus",
+      "display_name": "Mupen64plus",
+      "type": "retroarch",
+      "libretro_name": "mupen64plus",
+      "file_name": "mupen64plus_libretro.so",
+      "config_folder": "Mupen64plus",
+      "info_name": "mupen64plus_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "mupen64plus_next",
+      "display_name": "Mupen64Plus Next",
+      "type": "retroarch",
+      "libretro_name": "mupen64plus_next",
+      "file_name": "mupen64plus_next_libretro.so",
+      "config_folder": "Mupen64Plus Next",
+      "info_name": "mupen64plus_next_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "nestopia",
+      "display_name": "Nestopia",
+      "type": "retroarch",
+      "libretro_name": "nestopia",
+      "file_name": "nestopia_libretro.so",
+      "config_folder": "Nestopia",
+      "info_name": "nestopia_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "parallel_n64",
+      "display_name": "ParaLLEl N64",
+      "type": "retroarch",
+      "libretro_name": "parallel_n64",
+      "file_name": "parallel_n64_libretro.so",
+      "config_folder": "ParaLLEl N64",
+      "info_name": "parallel_n64_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "pcsx_rearmed",
+      "display_name": "PCSX ReARMed",
+      "type": "retroarch",
+      "libretro_name": "pcsx_rearmed",
+      "file_name": "pcsx_rearmed_libretro.so",
+      "config_folder": "PCSX-ReARMed-64",
+      "info_name": "pcsx_rearmed_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "picodrive",
+      "display_name": "PicoDrive",
+      "type": "retroarch",
+      "libretro_name": "picodrive",
+      "file_name": "picodrive_libretro.so",
+      "config_folder": "PicoDrive",
+      "info_name": "picodrive_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "prosystem",
+      "display_name": "ProSystem",
+      "type": "retroarch",
+      "libretro_name": "prosystem",
+      "file_name": "prosystem_libretro.so",
+      "config_folder": "ProSystem",
+      "info_name": "prosystem_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "quicknes",
+      "display_name": "QuickNES",
+      "type": "retroarch",
+      "libretro_name": "quicknes",
+      "file_name": "quicknes_libretro.so",
+      "config_folder": "QuickNES",
+      "info_name": "quicknes_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "race",
+      "display_name": "RACE-64",
+      "type": "retroarch",
+      "libretro_name": "race",
+      "file_name": "race_libretro.so",
+      "config_folder": "RACE-64",
+      "info_name": "race_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "snes9x",
+      "display_name": "Snes9x",
+      "type": "retroarch",
+      "libretro_name": "snes9x",
+      "file_name": "snes9x_libretro.so",
+      "config_folder": "Snes9x",
+      "info_name": "snes9x_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "snes9x2002",
+      "display_name": "Snes9x 2002",
+      "type": "retroarch",
+      "libretro_name": "snes9x2002",
+      "file_name": "snes9x2002_libretro.so",
+      "config_folder": "Snes9x 2002",
+      "info_name": "snes9x2002_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "snes9x2005",
+      "display_name": "Snes9x 2005",
+      "type": "retroarch",
+      "libretro_name": "snes9x2005",
+      "file_name": "snes9x2005_libretro.so",
+      "config_folder": "Snes9x 2005",
+      "info_name": "snes9x2005_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "snes9x2005_plus",
+      "display_name": "Snes9x 2005 Plus",
+      "type": "retroarch",
+      "libretro_name": "snes9x2005_plus",
+      "file_name": "snes9x2005_plus_libretro.so",
+      "config_folder": "Snes9x 2005 Plus",
+      "info_name": "snes9x2005_plus_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "snes9x2010",
+      "display_name": "Snes9x 2010",
+      "type": "retroarch",
+      "libretro_name": "snes9x2010",
+      "file_name": "snes9x2010_libretro.so",
+      "config_folder": "Snes9x 2010",
+      "info_name": "snes9x2010_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "stella2014",
+      "display_name": "Stella 2014",
+      "type": "retroarch",
+      "libretro_name": "stella2014",
+      "file_name": "stella2014_libretro.so",
+      "config_folder": "Stella 2014",
+      "info_name": "stella2014_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "swanstation",
+      "display_name": "SwanStation",
+      "type": "retroarch",
+      "libretro_name": "swanstation",
+      "file_name": "swanstation_libretro.so",
+      "config_folder": "SwanStation",
+      "info_name": "swanstation_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "tgbdual",
+      "display_name": "TGB Dual",
+      "type": "retroarch",
+      "libretro_name": "tgbdual",
+      "file_name": "tgbdual_libretro.so",
+      "config_folder": "TGB Dual",
+      "info_name": "tgbdual_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "vba_next",
+      "display_name": "VBA Next",
+      "type": "retroarch",
+      "libretro_name": "vba_next",
+      "file_name": "vba_next_libretro.so",
+      "config_folder": "Vba Next",
+      "info_name": "vba_next_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "vbam",
+      "display_name": "VBA-M",
+      "type": "retroarch",
+      "libretro_name": "vbam",
+      "file_name": "vbam_libretro.so",
+      "config_folder": "Vbam",
+      "info_name": "vbam_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "yabasanshiro",
+      "display_name": "YabaSanshiro",
+      "type": "retroarch",
+      "libretro_name": "yabasanshiro",
+      "file_name": "yabasanshiro_libretro.so",
+      "config_folder": "YabaSanshiro",
+      "info_name": "yabasanshiro_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "yabasanshiro_a133p",
+      "display_name": "Yabasanshiro A133p",
+      "type": "retroarch",
+      "libretro_name": "yabasanshiro_a133p",
+      "file_name": "yabasanshiro_a133p_libretro.so",
+      "config_folder": "Yabasanshiro A133p",
+      "info_name": "yabasanshiro_a133p_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "yabasanshiro_smartpros",
+      "display_name": "Yabasanshiro Smartpros",
+      "type": "retroarch",
+      "libretro_name": "yabasanshiro_smartpros",
+      "file_name": "yabasanshiro_smartpros_libretro.so",
+      "config_folder": "Yabasanshiro Smartpros",
+      "info_name": "yabasanshiro_smartpros_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    }
+  ]
 }

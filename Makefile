@@ -19,7 +19,7 @@ PLATFORM_PACKAGE_DIR := $(PACKAGE_ROOT)/UMRK/mlp1
 SD_DIR := $(BUILD)/sd
 JAWAKA_BUILD_DIR := $(JAWAKA_DIR)/build/mlp1
 
-.PHONY: all image poc target-poc package jawaka-build retroarch-mlp1 cores-mlp1 jawaka-package jawaka-mlp1-vertical-slice sd-payload sd-payload-marked jawaka-sd-payload jawaka-sd-payload-marked adb-poc-test adb-install-wrapper adb-stage-sd-bundle adb-stage-sd-bundle-no-marker adb-stage-jawaka-sd-bundle adb-stage-jawaka-sd-bundle-no-marker adb-stage-jawaka-mlp1-vertical-slice adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs adb-uninstall-wrapper clean
+.PHONY: all image poc target-poc package jawaka-build retroarch-mlp1 cores-mlp1 jawaka-package jawaka-dev-package jawaka-mlp1-vertical-slice sd-payload sd-payload-marked jawaka-sd-payload jawaka-sd-payload-marked adb-poc-test adb-install-wrapper adb-stage-sd-bundle adb-stage-sd-bundle-no-marker adb-stage-jawaka-sd-bundle adb-stage-jawaka-sd-bundle-no-marker adb-stage-jawaka-dev-bundle adb-stage-jawaka-dev-bundle-no-marker adb-stage-jawaka-mlp1-vertical-slice adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs adb-uninstall-wrapper clean
 
 all: package sd-payload
 
@@ -97,6 +97,22 @@ jawaka-package: jawaka-build
 	@printf 'Jawaka MLP1 launcher bundle\n' > "$(PACKAGE_DIR)/README.txt"
 	@find "$(PACKAGE_ROOT)" -type f -print | sort
 
+jawaka-dev-package: jawaka-build
+	@rm -rf "$(PACKAGE_ROOT)"
+	@mkdir -p "$(PACKAGE_DIR)/bin" "$(PACKAGE_DIR)/res" "$(PLATFORM_PACKAGE_DIR)"
+	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawakad" "$(PACKAGE_DIR)/bin/loong_pangu"
+	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawaka-launcher" "$(PACKAGE_DIR)/bin/jawaka-launcher"
+	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawaka-menu" "$(PACKAGE_DIR)/bin/jawaka-menu"
+	@chmod 755 "$(PACKAGE_DIR)/bin/"*
+	@cp -Rf "$(JAWAKA_DIR)/res/themes" "$(PACKAGE_DIR)/res/"
+	@if [ -d "$(JAWAKA_DIR)/res/system_icons" ]; then cp -Rf "$(JAWAKA_DIR)/res/system_icons" "$(PACKAGE_DIR)/res/"; fi
+	@cp -Rf "$(CATASTROPHE_DIR)/res/fonts" "$(PACKAGE_DIR)/res/"
+	@cp -f "$(CATASTROPHE_DIR)/res/font.ttf" "$(PACKAGE_DIR)/res/font.ttf"
+	@if [ -d "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" ]; then cp -Rf "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" "$(PACKAGE_DIR)/res/assets"; fi
+	@cp -Rf "device/mlp1/." "$(PLATFORM_PACKAGE_DIR)/"
+	@printf 'Jawaka MLP1 dev launcher bundle (without RetroArch bin/cores/info)\n' > "$(PACKAGE_DIR)/README.txt"
+	@find "$(PACKAGE_ROOT)" -type f -print | sort
+
 jawaka-mlp1-vertical-slice: retroarch-mlp1 cores-mlp1 jawaka-sd-payload
 
 sd-payload: package
@@ -137,6 +153,12 @@ adb-stage-jawaka-sd-bundle: jawaka-package
 
 adb-stage-jawaka-sd-bundle-no-marker: jawaka-package
 	scripts/adb-stage-sd-bundle.sh --no-marker
+
+adb-stage-jawaka-dev-bundle: jawaka-dev-package
+	scripts/adb-stage-sd-bundle.sh --marker --merge-platform
+
+adb-stage-jawaka-dev-bundle-no-marker: jawaka-dev-package
+	scripts/adb-stage-sd-bundle.sh --no-marker --merge-platform
 
 adb-stage-jawaka-mlp1-vertical-slice: jawaka-mlp1-vertical-slice
 	scripts/adb-stage-sd-bundle.sh --marker

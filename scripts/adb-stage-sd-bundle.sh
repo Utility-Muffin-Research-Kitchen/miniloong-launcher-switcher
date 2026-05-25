@@ -9,6 +9,7 @@ REMOTE_BUNDLE="/mnt/sdcard/umrk-launcher"
 REMOTE_PLATFORM="/mnt/sdcard/UMRK"
 MARKER="/mnt/sdcard/.umrk-launcher"
 MARKER_MODE="keep"
+PLATFORM_MODE="replace"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -18,8 +19,11 @@ while [ "$#" -gt 0 ]; do
         --no-marker)
             MARKER_MODE="off"
             ;;
+        --merge-platform)
+            PLATFORM_MODE="merge"
+            ;;
         *)
-            echo "usage: $0 [--marker|--no-marker]" >&2
+            echo "usage: $0 [--marker|--no-marker] [--merge-platform]" >&2
             exit 1
             ;;
     esac
@@ -56,8 +60,12 @@ echo "Deploying bundle to $REMOTE_BUNDLE"
 "${ADB[@]}" shell "chmod 755 '$REMOTE_BUNDLE/bin/loong_pangu' 2>/dev/null || true"
 
 if [ -d "$PLATFORM_DIR" ]; then
-    echo "Deploying platform payload to $REMOTE_PLATFORM"
-    "${ADB[@]}" shell "mkdir -p '$REMOTE_PLATFORM' && rm -rf '$REMOTE_PLATFORM/mlp1'"
+    echo "Deploying platform payload to $REMOTE_PLATFORM ($PLATFORM_MODE)"
+    if [ "$PLATFORM_MODE" = "replace" ]; then
+        "${ADB[@]}" shell "mkdir -p '$REMOTE_PLATFORM' && rm -rf '$REMOTE_PLATFORM/mlp1'"
+    else
+        "${ADB[@]}" shell "mkdir -p '$REMOTE_PLATFORM'"
+    fi
     "${ADB[@]}" push "$PLATFORM_DIR/." "$REMOTE_PLATFORM/" >/dev/null
 fi
 
