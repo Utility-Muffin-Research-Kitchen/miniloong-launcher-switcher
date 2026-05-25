@@ -71,6 +71,7 @@ jawaka-package: jawaka-build
 	@cp -f "$(JAWAKA_BUILD_DIR)/bin/jawaka-menu" "$(PACKAGE_DIR)/bin/jawaka-menu"
 	@chmod 755 "$(PACKAGE_DIR)/bin/"*
 	@cp -Rf "$(JAWAKA_DIR)/res/themes" "$(PACKAGE_DIR)/res/"
+	@if [ -d "$(JAWAKA_DIR)/res/system_icons" ]; then cp -Rf "$(JAWAKA_DIR)/res/system_icons" "$(PACKAGE_DIR)/res/"; fi
 	@cp -Rf "$(CATASTROPHE_DIR)/res/fonts" "$(PACKAGE_DIR)/res/"
 	@cp -f "$(CATASTROPHE_DIR)/res/font.ttf" "$(PACKAGE_DIR)/res/font.ttf"
 	@if [ -d "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" ]; then cp -Rf "$(CATASTROPHE_DIR)/.cache/nextui-preview/assets" "$(PACKAGE_DIR)/res/assets"; fi
