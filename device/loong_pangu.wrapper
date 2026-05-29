@@ -284,6 +284,11 @@ fi
 
 killall loong_transition 2>/dev/null || true
 log_msg "dismissed stock boot transition"
+# Note: loong_service respawns loong_transition within ~2s until the home
+# launcher signals readiness. jawaka-launcher does that by calling the loong
+# SDK's EventOpend("HOME") after its first frame (see jw_loong_notify_home_ready
+# in Jawaka), which makes loong_service stop showing/respawning the splash. The
+# killall above only shortens the initial flash.
 kill_stale_custom_launcher
 log_msg "cleared stale custom launcher processes"
 
