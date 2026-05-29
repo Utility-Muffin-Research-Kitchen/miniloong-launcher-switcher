@@ -3,8 +3,13 @@
 Standalone launcher replacement installer for the Miniloong Pocket 1.
 
 This project is intentionally separate from `miniloong-adb-keeper`. It reuses
-the known `loong_upgrade` SD update mechanism, but it has its own payload
-generator, installer, logs, wrapper, POC launcher, and recovery scripts.
+the known `loong_upgrade` SD update mechanism, and owns the payload generator,
+installer, logs, wrapper, device defaults, and recovery scripts.
+
+It does **not** build the launcher itself. The launcher payload (Jawaka binaries
+plus Catastrophe/RetroArch/cores assets) is assembled by the UMRK workspace
+orchestrator; this repo wraps that payload into an installable SD/ADB bundle.
+See the workspace `make stage-jawaka` / `make assemble-jawaka`.
 
 ## Contract
 
@@ -41,20 +46,22 @@ the bundle is incomplete, it starts the stock GUI. The wrapper starts the stock
 backup through a temporary `loong_pangu` symlink so the process still looks like
 the normal stock GUI to stock supervision code.
 
-## Build
+## Build the SD payload
 
-The POC launcher is an SDL2 Wayland program built with the MLP1 toolchain in:
-
-```text
-/Volumes/Storage/UMRK/mlp1-toolchain
-```
-
-Build the launcher bundle and SD payload:
+First assemble the launcher payload from the workspace (builds Jawaka and
+gathers Catastrophe/RetroArch/cores into `build/stage/mlp1/package`):
 
 ```sh
-cd /Volumes/Storage/UMRK/miniloong-launcher-switcher
-make package
-make sd-payload
+cd /Volumes/Storage/UMRK
+make assemble-jawaka
+```
+
+Then wrap it into an SD-root OTA install payload, pointing `BUNDLE_ROOT` at the
+assembled tree:
+
+```sh
+cd miniloong-launcher-switcher
+make sd-payload BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
 ```
 
 The SD-root payload is written to:
@@ -64,25 +71,6 @@ build/sd/
   loong_upgrade
   launcher_probe.bin
   umrk-launcher-install.sh
-  umrk-launcher/bin/loong_pangu
-```
-
-To include the runtime marker in the generated SD directory:
-
-```sh
-make sd-payload-marked
-```
-
-Build a Jawaka-backed launcher bundle and fresh-install SD payload:
-
-```sh
-make jawaka-sd-payload
-```
-
-The Jawaka payload installs the switcher wrapper and stages:
-
-```text
-build/sd/
   umrk-launcher/
     bin/loong_pangu
     bin/jawaka-launcher
@@ -97,7 +85,7 @@ It does not enable the runtime marker by default. To generate a marked payload
 for trusted one-card activation:
 
 ```sh
-make jawaka-sd-payload-marked
+make sd-payload-marked BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
 ```
 
 Do not use exFAT for install media. The stock daemon ignores exFAT SD cards for
@@ -105,32 +93,24 @@ this update path.
 
 ## ADB Tests
 
-Run the POC without installing the wrapper:
-
-```sh
-make adb-poc-test
-```
-
-This pushes the POC to `/tmp`, pauses the running stock `loong_pangu`, runs the
-POC with `SDL_VIDEODRIVER=wayland`, then resumes the stock process.
-
 Install the wrapper over ADB:
 
 ```sh
 make adb-install-wrapper
 ```
 
-Stage the launcher bundle on the mounted SD card and enable the marker:
+Stage the launcher bundle on the mounted SD card and enable the marker
+(point `BUNDLE_ROOT` at the assembled payload):
 
 ```sh
-make adb-stage-sd-bundle
+make adb-stage-sd-bundle BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
 adb shell '/etc/init.d/S50loong restart'
 ```
 
 Stage the launcher bundle without activating it:
 
 ```sh
-make adb-stage-sd-bundle-no-marker
+make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
 ```
 
 Toggle activation and restart the stock Loong stack:
@@ -156,17 +136,11 @@ Tail switcher logs:
 make adb-tail-logs
 ```
 
-Stage the Jawaka bundle over ADB without activating it:
+To stage directly from the workspace (assemble + push + activate in one step):
 
 ```sh
-make adb-stage-jawaka-sd-bundle-no-marker
-```
-
-Stage and activate the Jawaka bundle over ADB:
-
-```sh
-make adb-stage-jawaka-sd-bundle
-make adb-restart-loong
+cd /Volumes/Storage/UMRK
+make stage-jawaka DEVICE=mlp1
 ```
 
 The installed switcher wrapper has crash-loop protection. If the marker is
