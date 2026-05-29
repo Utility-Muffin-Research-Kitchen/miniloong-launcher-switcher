@@ -2,7 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE_ROOT="$ROOT_DIR/build/package"
+# Payload location. Defaults to this repo's own build output, but the workspace
+# orchestrator overrides it to stage a centrally-assembled payload.
+BUNDLE_ROOT="${BUNDLE_ROOT:-$ROOT_DIR/build/package}"
 BUNDLE_DIR="$BUNDLE_ROOT/umrk-launcher"
 PLATFORM_DIR="$BUNDLE_ROOT/UMRK"
 REMOTE_BUNDLE="/mnt/sdcard/umrk-launcher"
