@@ -260,6 +260,17 @@ if [ ! -e "$MARKER" ]; then
     exec_stock "$@"
 fi
 
+# EXIT-TO-STOCK: temporary dev/test feature. Jawakad writes this sentinel
+# on intentional "Exit to Stock" from the menu. Falls back to stock for this
+# session only — sentinel lives in /tmp so it is cleared on reboot. See
+# jawakad shutdown handler and jawaka-menu EXIT_STOCK case. May be removed.
+if [ -f /tmp/umrk-exit-to-stock ]; then
+    rm -f /tmp/umrk-exit-to-stock
+    log_msg "exit-to-stock requested — using stock gui (this session only)"
+    rm -f "$CRASH_STATE" 2>/dev/null || true
+    exec_stock "$@"
+fi
+
 check_crash_loop "$@"
 
 if [ ! -f "$BUNDLE_BIN" ]; then
