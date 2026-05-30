@@ -145,6 +145,15 @@ disable_marker_for_remount_failure() {
 }
 
 check_crash_loop() {
+    # If jawakad exited cleanly (wrote a clean-exit marker), reset the crash
+    # counter and skip the guard. The marker is in /tmp so it clears on reboot.
+    if [ -f /tmp/umrk-clean-exit ]; then
+        rm -f /tmp/umrk-clean-exit
+        rm -f "$CRASH_STATE" 2>/dev/null || true
+        log_msg "clean exit detected — crash counter reset"
+        return 0
+    fi
+
     now="$(now_seconds)"
     if [ "$now" -le 0 ] 2>/dev/null; then
         log_msg "crash-loop guard skipped: date seconds unavailable"
