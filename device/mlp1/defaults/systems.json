@@ -1230,6 +1230,426 @@
       "rom_root": "Roms/WSC",
       "image_root": "Images/WSC",
       "bios_notes": []
+    },
+    {
+      "id": "SEGACD",
+      "name": "Sega CD",
+      "patterns": [
+        "SEGACD",
+        "segacd",
+        "SCD",
+        "scd",
+        "MEGACD",
+        "megacd"
+      ],
+      "extensions": [
+        "bin",
+        "chd",
+        "cue",
+        "iso"
+      ],
+      "archive_extensions": [
+        "zip",
+        "7z"
+      ],
+      "archive_inner_extensions": [
+        "bin",
+        "chd",
+        "cue",
+        "iso"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u"
+      ],
+      "m3u_generation": "manual",
+      "default_core": "genesis_plus_gx",
+      "alternate_cores": [
+        "picodrive"
+      ],
+      "rom_root": "Roms/SEGACD",
+      "image_root": "Images/SEGACD",
+      "bios_notes": [
+        "bios_CD_U.bin (US)",
+        "bios_CD_E.bin (Europe)",
+        "bios_CD_J.bin (Japan)"
+      ]
+    },
+    {
+      "id": "NEOGEO",
+      "name": "Neo Geo",
+      "patterns": [
+        "NEOGEO",
+        "neogeo",
+        "NeoGeo",
+        "NEO_GEO",
+        "ARCADE_NEO",
+        "arcade_neo"
+      ],
+      "extensions": [],
+      "archive_extensions": [
+        "zip",
+        "7z"
+      ],
+      "archive_inner_extensions": [],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [
+        "neocd.zip",
+        "neocdz.zip",
+        "neogeo.zip"
+      ],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "fbneo",
+      "alternate_cores": [
+        "fbalpha2012"
+      ],
+      "rom_root": "Roms/NEOGEO",
+      "image_root": "Images/NEOGEO",
+      "bios_notes": [
+        "neogeo.zip (required, place in BIOS folder)"
+      ]
+    },
+    {
+      "id": "FDS",
+      "name": "Famicom Disk",
+      "patterns": [
+        "FDS",
+        "fds",
+        "FAMICOMDISK",
+        "famicomdisk"
+      ],
+      "extensions": [
+        "fds",
+        "nes"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "fds",
+        "nes"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "fceumm",
+      "alternate_cores": [
+        "nestopia"
+      ],
+      "rom_root": "Roms/FDS",
+      "image_root": "Images/FDS",
+      "bios_notes": [
+        "disksys.rom (required)"
+      ]
+    },
+    {
+      "id": "PCECD",
+      "name": "PC Engine CD",
+      "patterns": [
+        "PCECD",
+        "pcecd",
+        "PCENGINECD",
+        "pcenginecd",
+        "TURBOGRAFXCD",
+        "turbografxcd"
+      ],
+      "extensions": [
+        "ccd",
+        "chd",
+        "cue",
+        "img",
+        "iso"
+      ],
+      "archive_extensions": [],
+      "archive_inner_extensions": [
+        "ccd",
+        "chd",
+        "cue",
+        "img",
+        "iso"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u"
+      ],
+      "m3u_generation": "manual",
+      "default_core": "mednafen_pce_fast",
+      "alternate_cores": [],
+      "rom_root": "Roms/PCECD",
+      "image_root": "Images/PCECD",
+      "bios_notes": [
+        "syscard3.pce (required)"
+      ]
+    },
+    {
+      "id": "SFC_JP",
+      "name": "Super Famicom",
+      "patterns": [
+        "SFC_JP",
+        "sfc_jp",
+        "SUPERFAMICOM_JP"
+      ],
+      "extensions": [
+        "bs",
+        "bsx",
+        "dx2",
+        "fig",
+        "gd3",
+        "gd7",
+        "sfc",
+        "smc",
+        "st",
+        "swc"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "bs",
+        "bsx",
+        "dx2",
+        "fig",
+        "gd3",
+        "gd7",
+        "sfc",
+        "smc",
+        "st",
+        "swc"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "snes9x",
+      "alternate_cores": [],
+      "rom_root": "Roms/SFC_JP",
+      "image_root": "Images/SFC_JP",
+      "bios_notes": []
+    },
+    {
+      "id": "SEVENTYEIGHTHUNDRED",
+      "name": "Atari 7800",
+      "patterns": [
+        "SEVENTYEIGHTHUNDRED",
+        "seventyeighthundred",
+        "ATARI7800",
+        "atari7800",
+        "A7800",
+        "a7800"
+      ],
+      "extensions": [
+        "a78",
+        "bin"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "a78",
+        "bin"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "prosystem",
+      "alternate_cores": [],
+      "rom_root": "Roms/SEVENTYEIGHTHUNDRED",
+      "image_root": "Images/SEVENTYEIGHTHUNDRED",
+      "bios_notes": []
+    },
+    {
+      "id": "NDS",
+      "name": "Nintendo DS",
+      "patterns": [
+        "NDS",
+        "nds",
+        "NINTENDODS",
+        "nintendods"
+      ],
+      "extensions": [
+        "nds"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "nds"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "drastic",
+      "alternate_cores": [],
+      "rom_root": "Roms/NDS",
+      "image_root": "Images/NDS",
+      "bios_notes": []
+    },
+    {
+      "id": "PSP",
+      "name": "PSP",
+      "patterns": [
+        "PSP",
+        "psp",
+        "PLAYSTATIONPORTABLE",
+        "playstationportable"
+      ],
+      "extensions": [
+        "cso",
+        "iso",
+        "pbp"
+      ],
+      "archive_extensions": [],
+      "archive_inner_extensions": [
+        "cso",
+        "iso",
+        "pbp"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "ppsspp",
+      "alternate_cores": [],
+      "rom_root": "Roms/PSP",
+      "image_root": "Images/PSP",
+      "bios_notes": []
+    },
+    {
+      "id": "PORTS",
+      "name": "Ports",
+      "patterns": [
+        "PORTS",
+        "ports"
+      ],
+      "extensions": [
+        "sh"
+      ],
+      "archive_extensions": [],
+      "archive_inner_extensions": [],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "",
+      "alternate_cores": [],
+      "rom_root": "Roms/PORTS",
+      "image_root": "Images/PORTS",
+      "bios_notes": []
+    },
+    {
+      "id": "COLECO",
+      "name": "ColecoVision",
+      "patterns": [
+        "COLECO",
+        "coleco",
+        "COLECOVISION",
+        "colecovision"
+      ],
+      "extensions": [
+        "bin",
+        "col",
+        "rom"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "bin",
+        "col",
+        "rom"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "bluemsx",
+      "alternate_cores": [],
+      "rom_root": "Roms/COLECO",
+      "image_root": "Images/COLECO",
+      "bios_notes": []
+    },
+    {
+      "id": "VECTREX",
+      "name": "Vectrex",
+      "patterns": [
+        "VECTREX",
+        "vectrex"
+      ],
+      "extensions": [
+        "bin",
+        "vec"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "bin",
+        "vec"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "vecx",
+      "alternate_cores": [],
+      "rom_root": "Roms/VECTREX",
+      "image_root": "Images/VECTREX",
+      "bios_notes": []
+    },
+    {
+      "id": "VB",
+      "name": "Virtual Boy",
+      "patterns": [
+        "VB",
+        "vb",
+        "VIRTUALBOY",
+        "virtualboy"
+      ],
+      "extensions": [
+        "vb",
+        "vboy"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "vb",
+        "vboy"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "mednafen_vb",
+      "alternate_cores": [],
+      "rom_root": "Roms/VB",
+      "image_root": "Images/VB",
+      "bios_notes": []
     }
   ]
 }

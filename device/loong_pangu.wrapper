@@ -282,6 +282,34 @@ if ! preflight_jawaka_bundle; then
     exec_stock "$@"
 fi
 
+# Stop loong_storage from remounting the SD card read-only. The custom launcher
+# needs persistent rw access for its SQLite database, settings, and saves.
+# loong_daemon's keepStorageAlive will respawn the real binary, so we replace it
+# with a no-op sleeper. The original is preserved as loong_storage.stock.umrk.
+if pidof loong_storage >/dev/null 2>&1; then
+    killall loong_storage 2>/dev/null || true
+    sleep 1
+    if [ -x /loong/loong_storage ] && ! grep -q "umrk-noop" /loong/loong_storage 2>/dev/null; then
+        if [ ! -f /loong/loong_storage.stock.umrk ]; then
+            cp /loong/loong_storage /loong/loong_storage.stock.umrk 2>/dev/null || true
+            log_msg "backed up loong_storage to loong_storage.stock.umrk"
+        fi
+        printf '#!/bin/sh\n# umrk-noop: loong_storage disabled by launcher switcher\nwhile true; do sleep 3600; done\n' > /loong/loong_storage
+        chmod 755 /loong/loong_storage
+        log_msg "replaced loong_storage with noop sleeper"
+    fi
+fi
+
+# Run platform boot scripts from the SD card hook directory. Each executable
+# file in platform.d/ is sourced in sorted order before the launcher starts.
+if [ -d "$PLATFORM_ROOT/platform.d" ]; then
+    for script in "$PLATFORM_ROOT/platform.d"/*.sh; do
+        [ -f "$script" ] && [ -x "$script" ] || continue
+        log_msg "running platform script: $script"
+        "$script" >>"$LOG" 2>&1 || log_msg "platform script failed: $script"
+    done
+fi
+
 killall loong_transition 2>/dev/null || true
 log_msg "dismissed stock boot transition"
 # Note: loong_service respawns loong_transition within ~2s until the home
