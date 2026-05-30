@@ -86,6 +86,28 @@ Reduced tabbed non-settings footer from 6 to 4 items (dropped Menu and Rescan
 which are accessible via the Menu button) to eliminate `+2` overflow on the
 960px MLP1 display.
 
+## Status Bar (`cmd/jawaka-launcher/main.c`)
+
+Added `jw__draw_status_bar()` helper that renders the Catastrophe status bar
+pill (battery, wifi, clock) on all launcher views. Called after
+`cat_clear_screen()` in vertical, horizontal, coverflow, game browser, and
+search renderers.
+
+Tabbed layout skipped — the tab bar is shorter than the status bar pill height.
+Needs Catastrophe-level support (taller tab bar, inline icon strip, or a
+combined `cat_draw_tab_bar_with_status` API). Left as a TODO comment in source.
+
+## System Definitions (`device/mlp1/defaults/systems.json`)
+
+Added all remaining undefined systems:
+- **With cores**: FDS (fceumm), PCECD (mednafen_pce_fast), SFC_JP (snes9x),
+  SEVENTYEIGHTHUNDRED (prosystem)
+- **Standalone/future**: NDS (drastic), PSP (ppsspp), PORTS (scripts)
+- **No core yet**: COLECO (bluemsx), VECTREX (vecx), VB (mednafen_vb)
+- **Pattern alias**: ARCADE_NEO added to NEOGEO patterns
+
+Zero "skipping unknown ROM folder" messages now.
+
 ## Hardware Findings
 
 Documented during testing, relevant for platform logic:
