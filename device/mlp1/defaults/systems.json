@@ -1243,7 +1243,6 @@
         "megacd"
       ],
       "extensions": [
-        "bin",
         "chd",
         "cue",
         "iso"
