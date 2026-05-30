@@ -21,6 +21,24 @@
       "status": "packaged"
     },
     {
+      "id": "bluemsx",
+      "display_name": "blueMSX",
+      "type": "retroarch",
+      "libretro_name": "bluemsx",
+      "file_name": "bluemsx_libretro.so",
+      "config_folder": "blueMSX",
+      "info_name": "bluemsx_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
       "id": "chimerasnes",
       "display_name": "ChimeraSNES",
       "type": "retroarch",
@@ -55,6 +73,24 @@
         "mlp1"
       ],
       "status": "packaged"
+    },
+    {
+      "id": "drastic",
+      "display_name": "DraStic",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": null,
+      "info_name": null,
+      "path": "/mnt/SDCARD/.allium/cores/drastic/launch.sh",
+      "supports_menu": false,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "defer"
     },
     {
       "id": "easyrpg",
@@ -633,6 +669,24 @@
       "status": "missing"
     },
     {
+      "id": "mednafen_vb",
+      "display_name": "Beetle VB",
+      "type": "retroarch",
+      "libretro_name": "mednafen_vb",
+      "file_name": "mednafen_vb_libretro.so",
+      "config_folder": "Beetle VB",
+      "info_name": "mednafen_vb_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
       "id": "mednafen_wswan",
       "display_name": "Beetle Cygne",
       "type": "retroarch",
@@ -775,6 +829,42 @@
         "mlp1"
       ],
       "status": "missing"
+    },
+    {
+      "id": "ports",
+      "display_name": "Ports",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": null,
+      "info_name": null,
+      "path": "/mnt/SDCARD/Roms/PORTS",
+      "supports_menu": false,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "defer"
+    },
+    {
+      "id": "ppsspp",
+      "display_name": "PPSSPP",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": null,
+      "info_name": null,
+      "path": "/mnt/SDCARD/Emu/PSP/launch.sh",
+      "supports_menu": false,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "defer"
     },
     {
       "id": "prosystem",
@@ -1000,6 +1090,24 @@
       "file_name": "vbam_libretro.so",
       "config_folder": "Vbam",
       "info_name": "vbam_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "missing"
+    },
+    {
+      "id": "vecx",
+      "display_name": "VecX",
+      "type": "retroarch",
+      "libretro_name": "vecx",
+      "file_name": "vecx_libretro.so",
+      "config_folder": "vecx",
+      "info_name": "vecx_libretro.info",
       "path": null,
       "supports_menu": true,
       "supports_savestate": true,
