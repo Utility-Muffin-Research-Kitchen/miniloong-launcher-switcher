@@ -211,23 +211,37 @@ exec_stock() {
 }
 
 kill_stale_custom_launcher() {
-    for name in jawakad jawaka-launcher jawaka-menu; do
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         if [ -n "$pids" ]; then
             log_msg "stopping stale $name pids=$pids"
             kill $pids 2>/dev/null || true
         fi
     done
+    if command -v pgrep >/dev/null 2>&1; then
+        pids="$(pgrep -f jawaka-retroarch-runner 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "stopping stale jawaka-retroarch-runner pids=$pids"
+            kill $pids 2>/dev/null || true
+        fi
+    fi
 
     sleep 1
 
-    for name in jawakad jawaka-launcher jawaka-menu; do
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         if [ -n "$pids" ]; then
             log_msg "force stopping stale $name pids=$pids"
             kill -9 $pids 2>/dev/null || true
         fi
     done
+    if command -v pgrep >/dev/null 2>&1; then
+        pids="$(pgrep -f jawaka-retroarch-runner 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "force stopping stale jawaka-retroarch-runner pids=$pids"
+            kill -9 $pids 2>/dev/null || true
+        fi
+    fi
 }
 
 preflight_jawaka_bundle() {
