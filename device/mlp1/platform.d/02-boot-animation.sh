@@ -4,15 +4,15 @@
 # Runs on every boot but the copy only happens once.
 
 STAMP="/loong/textures/.umrk-boot-installed"
-SRC="/mnt/sdcard/UMRK/mlp1/boot-animation"
+SRC="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/UMRK/${PLATFORM:-mlp1}}}/boot-animation"
 
 # Already installed — nothing to do.
-[ -f "$STAMP" ] && return 0 2>/dev/null
+[ -f "$STAMP" ] && exit 0
 
 # Source frames not on SD card — nothing to install.
-[ -d "$SRC/0" ] || return 0 2>/dev/null
+[ -d "$SRC/0" ] || exit 0
 
-mount -o remount,rw / 2>/dev/null || return 0
+mount -o remount,rw / 2>/dev/null || exit 0
 
 # Backup stock animation if not already done.
 if [ ! -d /loong/textures/boot.stock ]; then
@@ -27,5 +27,6 @@ cp "$SRC/1/"*.png /loong/textures/boot/1/ 2>/dev/null
 # Copy config if present.
 [ -f "$SRC/boot.cfg" ] && cp "$SRC/boot.cfg" /loong/textures/boot.cfg 2>/dev/null
 
-touch "$STAMP"
-mount -o remount,ro / 2>/dev/null
+touch "$STAMP" 2>/dev/null || true
+mount -o remount,ro / 2>/dev/null || true
+exit 0

@@ -7,9 +7,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_ROOT="${BUNDLE_ROOT:-$ROOT_DIR/build/package}"
 BUNDLE_DIR="$BUNDLE_ROOT/umrk-launcher"
 PLATFORM_DIR="$BUNDLE_ROOT/UMRK"
-REMOTE_BUNDLE="/mnt/sdcard/umrk-launcher"
-REMOTE_PLATFORM="/mnt/sdcard/UMRK"
-MARKER="/mnt/sdcard/.umrk-launcher"
+REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
+REMOTE_LAUNCHER_PATH="${REMOTE_LAUNCHER_PATH:-${REMOTE_BUNDLE:-$REMOTE_SDCARD_PATH/umrk-launcher}}"
+REMOTE_UMRK_PATH="${REMOTE_UMRK_PATH:-${REMOTE_PLATFORM:-$REMOTE_SDCARD_PATH/UMRK}}"
+REMOTE_PLATFORM_PATH="${REMOTE_PLATFORM_PATH:-$REMOTE_UMRK_PATH/mlp1}"
+MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
 MARKER_MODE="keep"
 PLATFORM_MODE="replace"
 
@@ -51,24 +53,24 @@ fi
 
 echo "Using adb device: $("${ADB[@]}" get-serialno)"
 
-"${ADB[@]}" shell "mountpoint -q /mnt/sdcard" >/dev/null || {
-    echo "/mnt/sdcard is not mounted on the device." >&2
+"${ADB[@]}" shell "mountpoint -q '$REMOTE_SDCARD_PATH'" >/dev/null || {
+    echo "$REMOTE_SDCARD_PATH is not mounted on the device." >&2
     exit 1
 }
 
-echo "Deploying bundle to $REMOTE_BUNDLE"
-"${ADB[@]}" shell "rm -rf '$REMOTE_BUNDLE'"
-"${ADB[@]}" push "$BUNDLE_DIR" /mnt/sdcard/ >/dev/null
-"${ADB[@]}" shell "chmod 755 '$REMOTE_BUNDLE/bin/loong_pangu' 2>/dev/null || true"
+echo "Deploying bundle to $REMOTE_LAUNCHER_PATH"
+"${ADB[@]}" shell "rm -rf '$REMOTE_LAUNCHER_PATH' && mkdir -p '$REMOTE_LAUNCHER_PATH'"
+"${ADB[@]}" push "$BUNDLE_DIR/." "$REMOTE_LAUNCHER_PATH/" >/dev/null
+"${ADB[@]}" shell "chmod 755 '$REMOTE_LAUNCHER_PATH/bin/loong_pangu' 2>/dev/null || true"
 
 if [ -d "$PLATFORM_DIR" ]; then
-    echo "Deploying platform payload to $REMOTE_PLATFORM ($PLATFORM_MODE)"
+    echo "Deploying platform payload to $REMOTE_UMRK_PATH ($PLATFORM_MODE)"
     if [ "$PLATFORM_MODE" = "replace" ]; then
-        "${ADB[@]}" shell "mkdir -p '$REMOTE_PLATFORM' && rm -rf '$REMOTE_PLATFORM/mlp1'"
+        "${ADB[@]}" shell "mkdir -p '$REMOTE_UMRK_PATH' && rm -rf '$REMOTE_PLATFORM_PATH'"
     else
-        "${ADB[@]}" shell "mkdir -p '$REMOTE_PLATFORM'"
+        "${ADB[@]}" shell "mkdir -p '$REMOTE_UMRK_PATH'"
     fi
-    "${ADB[@]}" push "$PLATFORM_DIR/." "$REMOTE_PLATFORM/" >/dev/null
+    "${ADB[@]}" push "$PLATFORM_DIR/." "$REMOTE_UMRK_PATH/" >/dev/null
 fi
 
 case "$MARKER_MODE" in

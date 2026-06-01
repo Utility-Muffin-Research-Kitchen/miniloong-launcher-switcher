@@ -2,9 +2,9 @@
   "platform": "mlp1",
   "version": "0.0.1-poc",
   "artifact_format": "directory",
-  "retroarch_bin": "/mnt/sdcard/UMRK/mlp1/bin/retroarch",
-  "cores_dir": "/mnt/sdcard/UMRK/mlp1/cores",
-  "info_dir": "/mnt/sdcard/UMRK/mlp1/info",
+  "retroarch_bin_relpath": "bin/retroarch",
+  "cores_dir_relpath": "cores",
+  "info_dir_relpath": "info",
   "defaults_dir_relpath": "defaults",
   "theme_dir_relpath": "../../umrk-launcher/res/themes",
   "source_repos": {

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REMOTE_INTERNAL_DATA_PATH="${REMOTE_INTERNAL_DATA_PATH:-/userdata}"
+
 if [ -n "${ADB_SERIAL:-}" ]; then
     ADB=(adb -s "$ADB_SERIAL")
 else
@@ -29,9 +31,8 @@ fi
 '
 
 echo "Uninstall log:"
-"${ADB[@]}" shell "tail -80 /userdata/umrk-launcher-uninstall.log 2>/dev/null || true"
+"${ADB[@]}" shell "tail -80 '$REMOTE_INTERNAL_DATA_PATH/umrk-launcher-uninstall.log' 2>/dev/null || true"
 
 echo
 echo "Stock binary restored. Restart the Loong stack or reboot to use it:"
 echo "  adb shell '/etc/init.d/S50loong restart'"
-

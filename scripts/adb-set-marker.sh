@@ -2,7 +2,8 @@
 set -euo pipefail
 
 MODE="${1:-}"
-MARKER="/mnt/sdcard/.umrk-launcher"
+REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
+MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
 
 case "$MODE" in
     on|--on|enable|--enable)
@@ -30,8 +31,8 @@ fi
 
 echo "Using adb device: $("${ADB[@]}" get-serialno)"
 
-"${ADB[@]}" shell "mountpoint -q /mnt/sdcard" >/dev/null || {
-    echo "/mnt/sdcard is not mounted on the device." >&2
+"${ADB[@]}" shell "mountpoint -q '$REMOTE_SDCARD_PATH'" >/dev/null || {
+    echo "$REMOTE_SDCARD_PATH is not mounted on the device." >&2
     exit 1
 }
 

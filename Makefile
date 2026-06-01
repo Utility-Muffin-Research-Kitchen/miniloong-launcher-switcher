@@ -38,6 +38,7 @@ sd-payload:
 	@rm -rf "$(SD_DIR)"
 	python3 make_launcher_switcher_sd.py --force "$(SD_DIR)"
 	@cp -R "$(BUNDLE_DIR)" "$(SD_DIR)/umrk-launcher"
+	@if [ ! -f "$(SD_DIR)/umrk-launcher/env.sh" ]; then cp -f device/umrk-env.sh "$(SD_DIR)/umrk-launcher/env.sh"; fi
 	@if [ -d "$(BUNDLE_ROOT)/UMRK" ]; then cp -R "$(BUNDLE_ROOT)/UMRK" "$(SD_DIR)/UMRK"; fi
 	@find "$(SD_DIR)" -maxdepth 5 -type f | sort
 

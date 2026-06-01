@@ -1,22 +1,36 @@
 #!/bin/sh
 # UMRK_LAUNCHER_SWITCHER_WRAPPER=1
 
-LOG=/userdata/umrk-launcher.log
-SD_MOUNT=/mnt/sdcard
-MARKER=/mnt/sdcard/.umrk-launcher
-BUNDLE=/mnt/sdcard/umrk-launcher
-BUNDLE_BIN=/mnt/sdcard/umrk-launcher/bin/loong_pangu
-PLATFORM_ROOT=/mnt/sdcard/UMRK/mlp1
+PLATFORM="${PLATFORM:-mlp1}"
+SD_MOUNT="${SDCARD_PATH:-/mnt/sdcard}"
+BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/umrk-launcher}"
+ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
+if [ -f "$ENV_FILE" ]; then
+    . "$ENV_FILE"
+fi
+
+SD_MOUNT="${SDCARD_PATH:-$SD_MOUNT}"
+BUNDLE="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
+BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/UMRK/$PLATFORM}}"
 STOCK=/loong/loong_pangu.stock.umrk
-STOCK_RUN_DIR=/tmp/umrk-stock-pangu
-STOCK_RUN_BIN=/tmp/umrk-stock-pangu/loong_pangu
-RUNTIME_DIR=/tmp/jawaka-runtime
-CRASH_STATE=/userdata/umrk-launcher-crash-state
+STOCK_RUN_DIR="${UMRK_STOCK_RUN_DIR:-${TMPDIR:-/tmp}/umrk-stock-pangu}"
+STOCK_RUN_BIN="$STOCK_RUN_DIR/loong_pangu"
+RUNTIME_DIR="${UMRK_RUNTIME_PATH:-${TMPDIR:-/tmp}/jawaka-runtime}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-/userdata}"
+LOG="${UMRK_LAUNCHER_LOG:-$INTERNAL_DATA/umrk-launcher.log}"
+MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.umrk-launcher}"
+CRASH_STATE="${UMRK_CRASH_STATE:-$INTERNAL_DATA/umrk-launcher-crash-state}"
+CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-${TMPDIR:-/tmp}/umrk-clean-exit}"
+EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-${TMPDIR:-/tmp}/umrk-exit-to-stock}"
 CRASH_WINDOW_SECONDS=120
 CRASH_THRESHOLD=3
 
 log_msg() {
-    mkdir -p /userdata 2>/dev/null || true
+    log_dir="${LOG%/*}"
+    if [ "$log_dir" != "$LOG" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || true
+    fi
     printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
@@ -147,8 +161,8 @@ disable_marker_for_remount_failure() {
 check_crash_loop() {
     # If jawakad exited cleanly (wrote a clean-exit marker), reset the crash
     # counter and skip the guard. The marker is in /tmp so it clears on reboot.
-    if [ -f /tmp/umrk-clean-exit ]; then
-        rm -f /tmp/umrk-clean-exit
+    if [ -f "$CLEAN_EXIT_SENTINEL" ]; then
+        rm -f "$CLEAN_EXIT_SENTINEL"
         rm -f "$CRASH_STATE" 2>/dev/null || true
         log_msg "clean exit detected — crash counter reset"
         return 0
@@ -180,7 +194,7 @@ check_crash_loop() {
         count=$((count + 1))
     fi
 
-    mkdir -p /userdata 2>/dev/null || true
+    mkdir -p "$INTERNAL_DATA" 2>/dev/null || true
     printf '%s %s\n' "$first" "$count" >"$CRASH_STATE" 2>/dev/null || true
 
     if [ "$count" -ge "$CRASH_THRESHOLD" ]; then
@@ -269,7 +283,7 @@ preflight_jawaka_bundle() {
         return 1
     fi
 
-    mkdir -p "$RUNTIME_DIR" /userdata 2>/dev/null || {
+    mkdir -p "$RUNTIME_DIR" "$INTERNAL_DATA" 2>/dev/null || {
         log_msg "failed to create runtime directory: $RUNTIME_DIR"
         return 1
     }
@@ -287,8 +301,8 @@ fi
 # on intentional "Exit to Stock" from the menu. Falls back to stock for this
 # session only — sentinel lives in /tmp so it is cleared on reboot. See
 # jawakad shutdown handler and jawaka-menu EXIT_STOCK case. May be removed.
-if [ -f /tmp/umrk-exit-to-stock ]; then
-    rm -f /tmp/umrk-exit-to-stock
+if [ -f "$EXIT_TO_STOCK_SENTINEL" ]; then
+    rm -f "$EXIT_TO_STOCK_SENTINEL"
     log_msg "exit-to-stock requested — using stock gui (this session only)"
     rm -f "$CRASH_STATE" 2>/dev/null || true
     exec_stock "$@"
@@ -354,6 +368,28 @@ log_msg "dismissed stock boot transition"
 kill_stale_custom_launcher
 log_msg "cleared stale custom launcher processes"
 
+export PLATFORM="${PLATFORM:-mlp1}"
+export DEVICE="${DEVICE:-$PLATFORM}"
+export SDCARD_PATH="${SDCARD_PATH:-$SD_MOUNT}"
+export SYSTEM_PATH="${SYSTEM_PATH:-$PLATFORM_ROOT}"
+export UMRK_PLATFORM_PATH="${UMRK_PLATFORM_PATH:-$PLATFORM_ROOT}"
+export UMRK_LAUNCHER_PATH="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
+export UMRK_BIN_PATH="${UMRK_BIN_PATH:-$BUNDLE/bin}"
+export UMRK_RUNTIME_PATH="${UMRK_RUNTIME_PATH:-$RUNTIME_DIR}"
+export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
+export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
+export USERDATA_PATH="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.userdata/shared}"
+export LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
+export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
+export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
+export BIOS_PATH="${BIOS_PATH:-$SD_MOUNT/BIOS}"
+export SAVES_PATH="${SAVES_PATH:-$SD_MOUNT/Saves}"
+export STATES_PATH="${STATES_PATH:-$SD_MOUNT/States}"
+export CHEATS_PATH="${CHEATS_PATH:-$SD_MOUNT/Cheats}"
+export CORES_PATH="${CORES_PATH:-$PLATFORM_ROOT/cores}"
+export INFO_PATH="${INFO_PATH:-$PLATFORM_ROOT/info}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-1}"
@@ -364,8 +400,8 @@ export CAT_FONTS_DIR="${CAT_FONTS_DIR:-$BUNDLE/res}"
 export CAT_STATUS_ASSETS_DIR="${CAT_STATUS_ASSETS_DIR:-$BUNDLE/res/assets}"
 export JAWAKA_RUNTIME_DIR="${JAWAKA_RUNTIME_DIR:-$RUNTIME_DIR}"
 export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-$SD_MOUNT}"
-export JAWAKA_RETROARCH_BIN="${JAWAKA_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
-export JAWAKA_RETROARCH_CORES_DIR="${JAWAKA_RETROARCH_CORES_DIR:-$PLATFORM_ROOT/cores}"
+export JAWAKA_RETROARCH_BIN="${JAWAKA_RETROARCH_BIN:-$UMRK_RETROARCH_BIN}"
+export JAWAKA_RETROARCH_CORES_DIR="${JAWAKA_RETROARCH_CORES_DIR:-$CORES_PATH}"
 export JAWAKA_THEME="${JAWAKA_THEME:-Jawaka-Tabs}"
 if [ -d "$BUNDLE/lib" ]; then
     export LD_LIBRARY_PATH="$BUNDLE/lib:${LD_LIBRARY_PATH:-}"

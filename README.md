@@ -28,17 +28,17 @@ The installer saves the stock binary as:
 At boot, the wrapper checks:
 
 ```text
-/mnt/sdcard/.umrk-launcher
-/mnt/sdcard/umrk-launcher/bin/loong_pangu
+UMRK_MARKER_PATH
+UMRK_BIN_PATH/loong_pangu
 ```
 
 If both exist, it remounts the SD card as executable and execs:
 
 ```text
-/mnt/sdcard/umrk-launcher/bin/loong_pangu
+UMRK_BIN_PATH/loong_pangu
 ```
 
-When the marker is present, the wrapper first remounts `/mnt/sdcard` with
+When the marker is present, the wrapper first remounts `SDCARD_PATH` with
 `exec` while preserving the stock mount options. When the marker is absent or
 the wrapper falls back to stock, it best-effort restores the StockOS `noexec`
 SD mount. If the marker is absent, the SD card is absent, remounting fails, or
@@ -52,7 +52,6 @@ First assemble the launcher payload from the workspace (builds Jawaka and
 gathers Catastrophe/RetroArch/cores into `build/stage/mlp1/package`):
 
 ```sh
-cd /Volumes/Storage/UMRK
 make assemble-jawaka
 ```
 
@@ -61,7 +60,7 @@ assembled tree:
 
 ```sh
 cd miniloong-launcher-switcher
-make sd-payload BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
+make sd-payload BUNDLE_ROOT=../build/stage/mlp1/package
 ```
 
 The SD-root payload is written to:
@@ -85,7 +84,7 @@ It does not enable the runtime marker by default. To generate a marked payload
 for trusted one-card activation:
 
 ```sh
-make sd-payload-marked BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
+make sd-payload-marked BUNDLE_ROOT=../build/stage/mlp1/package
 ```
 
 Do not use exFAT for install media. The stock daemon ignores exFAT SD cards for
@@ -103,14 +102,14 @@ Stage the launcher bundle on the mounted SD card and enable the marker
 (point `BUNDLE_ROOT` at the assembled payload):
 
 ```sh
-make adb-stage-sd-bundle BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
+make adb-stage-sd-bundle BUNDLE_ROOT=../build/stage/mlp1/package
 adb shell '/etc/init.d/S50loong restart'
 ```
 
 Stage the launcher bundle without activating it:
 
 ```sh
-make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=/Volumes/Storage/UMRK/build/stage/mlp1/package
+make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=../build/stage/mlp1/package
 ```
 
 Toggle activation and restart the stock Loong stack:
@@ -139,7 +138,6 @@ make adb-tail-logs
 To stage directly from the workspace (assemble + push + activate in one step):
 
 ```sh
-cd /Volumes/Storage/UMRK
 make stage-jawaka DEVICE=mlp1
 ```
 
@@ -147,7 +145,9 @@ The installed switcher wrapper has crash-loop protection. If the marker is
 present and the custom launcher path is entered repeatedly within a short
 window, it disables the marker and starts stock. Remount failure also disables
 the marker immediately, because the direct-SD Jawaka path cannot run safely
-while `/mnt/sdcard` is `noexec`.
+while the SD-card mount is `noexec`.
+MLP1 defaults `SDCARD_PATH` to `/mnt/sdcard`; override `REMOTE_SDCARD_PATH`
+for ADB staging tests when needed.
 
 ## SD Install
 
@@ -168,9 +168,9 @@ upgrade attempt. Power off after install, then boot normally.
 Logs:
 
 ```text
-/userdata/umrk-launcher-install.log
-/mnt/sdcard/umrk-launcher-install.log
-/userdata/umrk-launcher.log
+UMRK_INTERNAL_DATA_PATH/umrk-launcher-install.log
+SDCARD_PATH/umrk-launcher-install.log
+UMRK_INTERNAL_DATA_PATH/umrk-launcher.log
 ```
 
 ## Recovery

@@ -1,12 +1,16 @@
 #!/bin/sh
 set -u
 
-LOG=/userdata/umrk-launcher-uninstall.log
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-/userdata}"
+LOG="${UMRK_UNINSTALL_LOG:-$INTERNAL_DATA/umrk-launcher-uninstall.log}"
 TARGET=/loong/loong_pangu
 BACKUP=/loong/loong_pangu.stock.umrk
 
 log_msg() {
-    mkdir -p /userdata 2>/dev/null || true
+    log_dir="${LOG%/*}"
+    if [ "$log_dir" != "$LOG" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || true
+    fi
     printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
@@ -28,4 +32,3 @@ sync
 
 log_msg "restored stock loong_pangu"
 echo "restored stock loong_pangu"
-
