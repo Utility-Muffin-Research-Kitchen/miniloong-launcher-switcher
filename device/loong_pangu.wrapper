@@ -13,6 +13,7 @@ SD_MOUNT="${SDCARD_PATH:-$SD_MOUNT}"
 BUNDLE="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
 BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
 PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/UMRK/$PLATFORM}}"
+SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-/media/sdcard1}"
 STOCK=/loong/loong_pangu.stock.umrk
 STOCK_RUN_DIR="${UMRK_STOCK_RUN_DIR:-${TMPDIR:-/tmp}/umrk-stock-pangu}"
 STOCK_RUN_BIN="$STOCK_RUN_DIR/loong_pangu"
@@ -40,6 +41,10 @@ now_seconds() {
 
 sd_mount_options() {
     awk -v mountpoint="$SD_MOUNT" '$2 == mountpoint { print $4; exit }' /proc/mounts 2>/dev/null
+}
+
+mountpoint_is_mounted() {
+    awk -v mountpoint="$1" '$2 == mountpoint { found = 1; exit } END { exit found ? 0 : 1 }' /proc/mounts 2>/dev/null
 }
 
 option_list_has() {
@@ -135,6 +140,15 @@ restore_sd_noexec() {
         return 0
     fi
     remount_sd_mode noexec || log_msg "best-effort noexec restore failed"
+}
+
+remount_secondary_sd_exec() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    mountpoint_is_mounted "$SECONDARY_SD_MOUNT" || return 0
+    log_msg "best-effort remounting $SECONDARY_SD_MOUNT exec"
+    if ! mount -o remount,rw,exec,nosuid,nodev "$SECONDARY_SD_MOUNT" 2>>"$LOG"; then
+        log_msg "best-effort exec remount failed for $SECONDARY_SD_MOUNT"
+    fi
 }
 
 disable_marker() {
@@ -326,6 +340,8 @@ if ! sd_is_exec; then
     exec_stock "$@"
 fi
 
+remount_secondary_sd_exec
+
 if ! preflight_jawaka_bundle; then
     exec_stock "$@"
 fi
@@ -390,6 +406,26 @@ export STATES_PATH="${STATES_PATH:-$SD_MOUNT/States}"
 export CHEATS_PATH="${CHEATS_PATH:-$SD_MOUNT/Cheats}"
 export CORES_PATH="${CORES_PATH:-$PLATFORM_ROOT/cores}"
 export INFO_PATH="${INFO_PATH:-$PLATFORM_ROOT/info}"
+export UMRK_SECONDARY_SDCARD_PATH="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
+if [ "$PLATFORM" = "mlp1" ]; then
+    export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH}"
+    export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms}"
+    export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images}"
+    export APPS_PATHS="${APPS_PATHS:-$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps}"
+    export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS}"
+    export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves}"
+    export STATES_PATHS="${STATES_PATHS:-$STATES_PATH:$UMRK_SECONDARY_SDCARD_PATH/States}"
+    export CHEATS_PATHS="${CHEATS_PATHS:-$CHEATS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Cheats}"
+else
+    export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH}"
+    export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH}"
+    export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH}"
+    export APPS_PATHS="${APPS_PATHS:-$APPS_PATH}"
+    export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH}"
+    export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH}"
+    export STATES_PATHS="${STATES_PATHS:-$STATES_PATH}"
+    export CHEATS_PATHS="${CHEATS_PATHS:-$CHEATS_PATH}"
+fi
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-1}"

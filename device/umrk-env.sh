@@ -84,6 +84,39 @@ umrk_env_default CORES_PATH "$SYSTEM_PATH/cores"
 umrk_env_default INFO_PATH "$SYSTEM_PATH/info"
 umrk_env_default UMRK_RUNTIME_PATH "$_umrk_default_runtime"
 
+case "$PLATFORM" in
+    mlp1)
+        umrk_env_default UMRK_SECONDARY_SDCARD_PATH "/media/sdcard1"
+        _umrk_sdcard_paths="$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH"
+        _umrk_roms_paths="$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms"
+        _umrk_images_paths="$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images"
+        _umrk_apps_paths="$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps"
+        _umrk_bios_paths="$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS"
+        _umrk_saves_paths="$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves"
+        _umrk_states_paths="$STATES_PATH:$UMRK_SECONDARY_SDCARD_PATH/States"
+        _umrk_cheats_paths="$CHEATS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Cheats"
+        ;;
+    *)
+        _umrk_sdcard_paths="$SDCARD_PATH"
+        _umrk_roms_paths="$ROMS_PATH"
+        _umrk_images_paths="$IMAGES_PATH"
+        _umrk_apps_paths="$APPS_PATH"
+        _umrk_bios_paths="$BIOS_PATH"
+        _umrk_saves_paths="$SAVES_PATH"
+        _umrk_states_paths="$STATES_PATH"
+        _umrk_cheats_paths="$CHEATS_PATH"
+        ;;
+esac
+
+umrk_env_default SDCARD_PATHS "$_umrk_sdcard_paths"
+umrk_env_default ROMS_PATHS "$_umrk_roms_paths"
+umrk_env_default IMAGES_PATHS "$_umrk_images_paths"
+umrk_env_default APPS_PATHS "$_umrk_apps_paths"
+umrk_env_default BIOS_PATHS "$_umrk_bios_paths"
+umrk_env_default SAVES_PATHS "$_umrk_saves_paths"
+umrk_env_default STATES_PATHS "$_umrk_states_paths"
+umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
+
 if [ -n "$_umrk_default_internal" ]; then
     umrk_env_default UMRK_INTERNAL_DATA_PATH "$_umrk_default_internal"
 else
@@ -104,3 +137,5 @@ umrk_env_default CAT_FONT_PATH "fonts/SpaceGrotesk/SpaceGrotesk-Regular.ttf"
 unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel
 unset _umrk_default_runtime _umrk_default_internal
+unset _umrk_sdcard_paths _umrk_roms_paths _umrk_images_paths _umrk_apps_paths
+unset _umrk_bios_paths _umrk_saves_paths _umrk_states_paths _umrk_cheats_paths
