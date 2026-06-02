@@ -95,6 +95,11 @@ umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
 umrk_env_default JAWAKA_RUNTIME_DIR "$UMRK_RUNTIME_PATH"
 umrk_env_default JAWAKA_RETROARCH_BIN "$UMRK_RETROARCH_BIN"
 umrk_env_default JAWAKA_RETROARCH_CORES_DIR "$CORES_PATH"
+umrk_env_default CAT_THEMES_DIR "$UMRK_LAUNCHER_PATH/res/themes"
+umrk_env_default CAT_FONTS_DIR "$UMRK_LAUNCHER_PATH/res"
+umrk_env_default CAT_STATUS_ASSETS_DIR "$UMRK_LAUNCHER_PATH/res/assets"
+umrk_env_default CAT_THEME_NAME "Jawaka-Tabs"
+umrk_env_default CAT_FONT_PATH "fonts/SpaceGrotesk/SpaceGrotesk-Regular.ttf"
 
 unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel
