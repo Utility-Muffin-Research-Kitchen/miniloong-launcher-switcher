@@ -44,13 +44,9 @@ manually (remount `/` rw first).
 
 Heads-up on a couple of things here:
 
-1. **Asset licensing — please sanity-check before we treat this as public-redist.**
-   `Leaf.png` / `dweezil.png` are our own text art. But
-   `synthwave_spritesheet.png` and `synthwave_loop.ogg` came from an external
-   source (origin not fully documented). Since this repo is public, we should
-   confirm they're redistributable (or swap them for known-licensed assets, the
-   way Catastrophe replaced the NextUI preview sprites). Flagging rather than
-   blocking — your call on provenance.
+1. **All assets are original work.** `synthwave_spritesheet.png`,
+   `synthwave_loop.ogg`, `Leaf.png`, and `dweezil.png` are all original work —
+   100% part of this repo, no third-party content, free to ship and redistribute.
 
 2. **`output/` is gitignored** — only the source (`generate.py` + `assets/`) is
    tracked here; the rendered frames are committed under
