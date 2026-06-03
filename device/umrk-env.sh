@@ -124,6 +124,11 @@ umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
 umrk_env_default JAWAKA_RUNTIME_DIR "$UMRK_RUNTIME_PATH"
 umrk_env_default JAWAKA_RETROARCH_BIN "$UMRK_RETROARCH_BIN"
 umrk_env_default JAWAKA_RETROARCH_CORES_DIR "$CORES_PATH"
+# Resident same-core switch experiment cap:
+#   0 disables resident content switching
+#   1 keeps the current safe default
+#   -1 or "unlimited" removes the per-RetroArch-process cap
+umrk_env_default JAWAKA_RESIDENT_SWITCH_MAX "1"
 umrk_env_default CAT_THEMES_DIR "$UMRK_LAUNCHER_PATH/res/themes"
 umrk_env_default CAT_FONTS_DIR "$UMRK_LAUNCHER_PATH/res"
 umrk_env_default CAT_STATUS_ASSETS_DIR "$UMRK_LAUNCHER_PATH/res/assets"

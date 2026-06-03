@@ -38,6 +38,12 @@ If both exist, it remounts the SD card as executable and execs:
 UMRK_BIN_PATH/loong_pangu
 ```
 
+On MLP1, if `/mnt/sdcard` is mounted but does not contain the marker/bundle
+and `/media/sdcard1` does, the wrapper treats `/media/sdcard1` as the active
+launcher SD for that session and continues through the same Jawaka startup
+path. This recovers from two-card boots where StockOS assigns the UMRK card to
+the secondary mount.
+
 When the marker is present, the wrapper first remounts `SDCARD_PATH` with
 `exec` while preserving the stock mount options. When the marker is absent or
 the wrapper falls back to stock, it best-effort restores the StockOS `noexec`

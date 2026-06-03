@@ -49,6 +49,87 @@ mountpoint_is_mounted() {
     awk -v mountpoint="$1" '$2 == mountpoint { found = 1; exit } END { exit found ? 0 : 1 }' /proc/mounts 2>/dev/null
 }
 
+launcher_candidate_ready() {
+    root="$1"
+    [ -n "$root" ] || return 1
+    [ -e "$root/.umrk-launcher" ] || return 1
+    [ -f "$root/umrk-launcher/bin/loong_pangu" ] || return 1
+    return 0
+}
+
+set_active_launcher_sd() {
+    active="$1"
+    alternate="$2"
+
+    export SDCARD_PATH="$active"
+    export SYSTEM_PATH="$active/UMRK/$PLATFORM"
+    export UMRK_PLATFORM_PATH="$SYSTEM_PATH"
+    export UMRK_LAUNCHER_PATH="$active/umrk-launcher"
+    export UMRK_BIN_PATH="$UMRK_LAUNCHER_PATH/bin"
+    export USERDATA_PATH="$active/.userdata/$PLATFORM"
+    export SHARED_USERDATA_PATH="$active/.userdata/shared"
+    export LOGS_PATH="$USERDATA_PATH/logs"
+    export UMRK_INTERNAL_DATA_PATH="$USERDATA_PATH"
+    export UMRK_MARKER_PATH="$active/.umrk-launcher"
+
+    if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
+       mountpoint_is_mounted "$alternate"; then
+        export UMRK_SECONDARY_SDCARD_PATH="$alternate"
+        export SDCARD_PATHS="$active:$alternate"
+        export ROMS_PATHS="$active/Roms:$alternate/Roms"
+        export IMAGES_PATHS="$active/Images:$alternate/Images"
+        export APPS_PATHS="$active/Apps:$alternate/Apps"
+        export BIOS_PATHS="$active/BIOS:$alternate/BIOS"
+        export SAVES_PATHS="$active/Saves:$alternate/Saves"
+        export STATES_PATHS="$active/States:$alternate/States"
+        export CHEATS_PATHS="$active/Cheats:$alternate/Cheats"
+    else
+        export UMRK_SECONDARY_SDCARD_PATH="$SECONDARY_SD_MOUNT"
+        export SDCARD_PATHS="$active"
+        export ROMS_PATHS="$active/Roms"
+        export IMAGES_PATHS="$active/Images"
+        export APPS_PATHS="$active/Apps"
+        export BIOS_PATHS="$active/BIOS"
+        export SAVES_PATHS="$active/Saves"
+        export STATES_PATHS="$active/States"
+        export CHEATS_PATHS="$active/Cheats"
+    fi
+
+    ENV_FILE="${UMRK_ENV_FILE:-$UMRK_LAUNCHER_PATH/env.sh}"
+    if [ -f "$ENV_FILE" ]; then
+        . "$ENV_FILE"
+    fi
+
+    SD_MOUNT="${SDCARD_PATH:-$active}"
+    BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/umrk-launcher}"
+    BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
+    PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/UMRK/$PLATFORM}}"
+    SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
+    RUNTIME_DIR="${UMRK_RUNTIME_PATH:-${TMPDIR:-/tmp}/jawaka-runtime}"
+    USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+    LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
+    INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$USERDATA_DIR}"
+    LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-launcher.log}"
+    MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.umrk-launcher}"
+    CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
+}
+
+recover_launcher_sd_mount() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    launcher_candidate_ready "$SD_MOUNT" && return 0
+
+    candidate="$SECONDARY_SD_MOUNT"
+    [ -n "$candidate" ] || return 0
+    [ "$candidate" != "$SD_MOUNT" ] || return 0
+    mountpoint_is_mounted "$candidate" || return 0
+    launcher_candidate_ready "$candidate" || return 0
+
+    old_sd="$SD_MOUNT"
+    log_msg "launcher marker/bundle not ready on $old_sd; found active launcher SD at $candidate"
+    set_active_launcher_sd "$candidate" "$old_sd"
+    log_msg "recovered active launcher SD: $SD_MOUNT (alternate content SD: ${UMRK_SECONDARY_SDCARD_PATH:-none})"
+}
+
 option_list_has() {
     case ",$1," in
         *",$2,"*) return 0 ;;
@@ -306,6 +387,8 @@ preflight_jawaka_bundle() {
 
     return 0
 }
+
+recover_launcher_sd_mount
 
 if [ ! -e "$MARKER" ]; then
     log_msg "marker absent, using stock gui"
