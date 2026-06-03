@@ -39,7 +39,7 @@ case "$PLATFORM" in
         _umrk_default_system_rel="UMRK/$PLATFORM"
         _umrk_default_launcher_rel="umrk-launcher"
         _umrk_default_runtime="${TMPDIR:-/tmp}/jawaka-runtime"
-        _umrk_default_internal="/userdata"
+        _umrk_default_internal=""
         ;;
     tg5040|tg5050|my355)
         _umrk_default_sd="/mnt/SDCARD"
@@ -117,11 +117,7 @@ umrk_env_default SAVES_PATHS "$_umrk_saves_paths"
 umrk_env_default STATES_PATHS "$_umrk_states_paths"
 umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
 
-if [ -n "$_umrk_default_internal" ]; then
-    umrk_env_default UMRK_INTERNAL_DATA_PATH "$_umrk_default_internal"
-else
-    umrk_env_default UMRK_INTERNAL_DATA_PATH "$USERDATA_PATH"
-fi
+umrk_env_default UMRK_INTERNAL_DATA_PATH "${_umrk_default_internal:-$USERDATA_PATH}"
 
 umrk_env_default UMRK_RETROARCH_BIN "$SYSTEM_PATH/bin/retroarch"
 umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"

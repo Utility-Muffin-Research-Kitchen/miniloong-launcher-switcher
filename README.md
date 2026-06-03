@@ -168,9 +168,10 @@ upgrade attempt. Power off after install, then boot normally.
 Logs:
 
 ```text
-UMRK_INTERNAL_DATA_PATH/umrk-launcher-install.log
-SDCARD_PATH/umrk-launcher-install.log
-UMRK_INTERNAL_DATA_PATH/umrk-launcher.log
+LOGS_PATH/umrk-launcher-install-command.log
+LOGS_PATH/umrk-launcher-install.log
+LOGS_PATH/umrk-launcher-uninstall.log
+LOGS_PATH/umrk-launcher.log
 ```
 
 ## Recovery

@@ -2,7 +2,9 @@
 set -euo pipefail
 
 LINES="${1:-120}"
-REMOTE_INTERNAL_DATA_PATH="${REMOTE_INTERNAL_DATA_PATH:-/userdata}"
+REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
+REMOTE_USERDATA_PATH="${REMOTE_USERDATA_PATH:-$REMOTE_SDCARD_PATH/.userdata/mlp1}"
+REMOTE_LOGS_PATH="${REMOTE_LOGS_PATH:-$REMOTE_USERDATA_PATH/logs}"
 case "$LINES" in
     ''|*[!0-9]*)
         echo "usage: $0 [line_count]" >&2
@@ -24,10 +26,10 @@ fi
 echo "Using adb device: $("${ADB[@]}" get-serialno)"
 
 "${ADB[@]}" shell "
-printf '== $REMOTE_INTERNAL_DATA_PATH/umrk-launcher.log ==\\n'
-tail -n '$LINES' '$REMOTE_INTERNAL_DATA_PATH/umrk-launcher.log' 2>/dev/null || true
-printf '\\n== $REMOTE_INTERNAL_DATA_PATH/umrk-launcher-install.log ==\\n'
-tail -n '$LINES' '$REMOTE_INTERNAL_DATA_PATH/umrk-launcher-install.log' 2>/dev/null || true
-printf '\\n== $REMOTE_INTERNAL_DATA_PATH/umrk-launcher-uninstall.log ==\\n'
-tail -n '$LINES' '$REMOTE_INTERNAL_DATA_PATH/umrk-launcher-uninstall.log' 2>/dev/null || true
+printf '== $REMOTE_LOGS_PATH/umrk-launcher.log ==\\n'
+tail -n '$LINES' '$REMOTE_LOGS_PATH/umrk-launcher.log' 2>/dev/null || true
+printf '\\n== $REMOTE_LOGS_PATH/umrk-launcher-install.log ==\\n'
+tail -n '$LINES' '$REMOTE_LOGS_PATH/umrk-launcher-install.log' 2>/dev/null || true
+printf '\\n== $REMOTE_LOGS_PATH/umrk-launcher-uninstall.log ==\\n'
+tail -n '$LINES' '$REMOTE_LOGS_PATH/umrk-launcher-uninstall.log' 2>/dev/null || true
 "

@@ -2,10 +2,12 @@
 # Start the Dropbear SSH server if it was previously configured.
 # Runs as a platform.d boot hook — the launcher switcher wrapper executes
 # this before Jawaka starts. Config and host keys are owned by the SSH
-# server app under the internal UMRK data root.
+# server app under the first-SD userdata root.
 
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-/userdata}"
-SSH_STATE_ROOT="${UMRK_SSH_STATE_DIR:-$INTERNAL_DATA/umrk-ssh-server}"
+PLATFORM="${PLATFORM:-mlp1}"
+SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"
+USERDATA_DIR="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
+SSH_STATE_ROOT="${UMRK_SSH_STATE_DIR:-$USERDATA_DIR/umrk-ssh-server}"
 APPS_ROOT="${APPS_PATH:-${SDCARD_PATH:-/mnt/sdcard}/Apps}"
 
 SSH_CONFIG="$SSH_STATE_ROOT/config.ini"

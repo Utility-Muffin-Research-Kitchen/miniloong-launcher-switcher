@@ -13,7 +13,6 @@ DEFAULT_OTA_FILE = "launcher_probe.bin"
 DEFAULT_PROBE_CONTENT = b"miniloong launcher switcher probe\n"
 INSTALLER_NAME = "umrk-launcher-install.sh"
 MLP1_SDCARD_PATH = "/mnt/sdcard"
-MLP1_INTERNAL_DATA_PATH = "/userdata"
 
 ROOT_DIR = Path(__file__).resolve().parent
 WRAPPER_PATH = ROOT_DIR / "device" / "loong_pangu.wrapper"
@@ -126,19 +125,20 @@ def build_installer_script() -> str:
     return f"""#!/bin/sh
 set -u
 
+PLATFORM="${{PLATFORM:-mlp1}}"
 SDCARD_PATH="${{SDCARD_PATH:-{MLP1_SDCARD_PATH}}}"
-INTERNAL_DATA="${{UMRK_INTERNAL_DATA_PATH:-{MLP1_INTERNAL_DATA_PATH}}}"
-LOG="$INTERNAL_DATA/umrk-launcher-install.log"
-SDLOG="$SDCARD_PATH/umrk-launcher-install.log"
+USERDATA_PATH="${{USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}}"
+LOGS_PATH="${{LOGS_PATH:-$USERDATA_PATH/logs}}"
+INTERNAL_DATA="${{UMRK_INTERNAL_DATA_PATH:-$USERDATA_PATH}}"
+LOG="$LOGS_PATH/umrk-launcher-install.log"
 TARGET=/loong/loong_pangu
 BACKUP=/loong/loong_pangu.stock.umrk
 WRAPPER_TMP=/tmp/loong_pangu.umrk-wrapper.$$
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 
 log_msg() {{
-    mkdir -p "$INTERNAL_DATA" 2>/dev/null || true
+    mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
-    printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$SDLOG" 2>/dev/null || true
 }}
 
 fail() {{
@@ -195,9 +195,14 @@ echo "installed launcher switcher wrapper"
 def install_command() -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
-        "printf 'launcher switcher otaCommand started\\n' >$SDCARD_PATH/umrk-launcher-install-command.log 2>/dev/null || true; "
-        f"sh $SDCARD_PATH/{INSTALLER_NAME} >>$SDCARD_PATH/umrk-launcher-install-command.log 2>&1; "
-        "printf 'launcher switcher installer returned\\n' >>$SDCARD_PATH/umrk-launcher-install-command.log 2>/dev/null || true; "
+        "PLATFORM=${PLATFORM:-mlp1}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
+        "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
+        "mkdir -p $LOGS_PATH 2>/dev/null || true; "
+        "INSTALL_LOG=$LOGS_PATH/umrk-launcher-install-command.log; "
+        "printf 'launcher switcher otaCommand started\\n' >$INSTALL_LOG 2>/dev/null || true; "
+        f"sh $SDCARD_PATH/{INSTALLER_NAME} >>$INSTALL_LOG 2>&1; "
+        "printf 'launcher switcher installer returned\\n' >>$INSTALL_LOG 2>/dev/null || true; "
         "sync; "
         "while true; do sleep 3600; done"
     )
@@ -206,13 +211,14 @@ def install_command() -> str:
 def probe_command() -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
-        f"INTERNAL_DATA={MLP1_INTERNAL_DATA_PATH}; "
-        "LOG=$INTERNAL_DATA/umrk-launcher-probe.log; "
-        "SDLOG=$SDCARD_PATH/umrk-launcher-probe.log; "
+        "PLATFORM=${PLATFORM:-mlp1}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
+        "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
+        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$USERDATA_PATH}; "
+        "mkdir -p $LOGS_PATH $INTERNAL_DATA 2>/dev/null || true; "
+        "LOG=$LOGS_PATH/umrk-launcher-probe.log; "
         "printf 'launcher switcher probe started\\n' >$LOG 2>/dev/null || true; "
-        "printf 'launcher switcher probe started\\n' >$SDLOG 2>/dev/null || true; "
         "touch $INTERNAL_DATA/umrk_launcher_probe_started 2>/dev/null || true; "
-        "touch $SDCARD_PATH/umrk_launcher_probe_started 2>/dev/null || true; "
         "mv $SDCARD_PATH/loong_upgrade $SDCARD_PATH/loong_upgrade.used 2>/dev/null || true; "
         "sync; "
         "while true; do sleep 3600; done"

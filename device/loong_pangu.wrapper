@@ -18,10 +18,12 @@ STOCK=/loong/loong_pangu.stock.umrk
 STOCK_RUN_DIR="${UMRK_STOCK_RUN_DIR:-${TMPDIR:-/tmp}/umrk-stock-pangu}"
 STOCK_RUN_BIN="$STOCK_RUN_DIR/loong_pangu"
 RUNTIME_DIR="${UMRK_RUNTIME_PATH:-${TMPDIR:-/tmp}/jawaka-runtime}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-/userdata}"
-LOG="${UMRK_LAUNCHER_LOG:-$INTERNAL_DATA/umrk-launcher.log}"
+USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$USERDATA_DIR}"
+LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-launcher.log}"
 MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.umrk-launcher}"
-CRASH_STATE="${UMRK_CRASH_STATE:-$INTERNAL_DATA/umrk-launcher-crash-state}"
+CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-${TMPDIR:-/tmp}/umrk-clean-exit}"
 EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-${TMPDIR:-/tmp}/umrk-exit-to-stock}"
 CRASH_WINDOW_SECONDS=120
@@ -208,7 +210,7 @@ check_crash_loop() {
         count=$((count + 1))
     fi
 
-    mkdir -p "$INTERNAL_DATA" 2>/dev/null || true
+    mkdir -p "$USERDATA_DIR" 2>/dev/null || true
     printf '%s %s\n' "$first" "$count" >"$CRASH_STATE" 2>/dev/null || true
 
     if [ "$count" -ge "$CRASH_THRESHOLD" ]; then
@@ -297,7 +299,7 @@ preflight_jawaka_bundle() {
         return 1
     fi
 
-    mkdir -p "$RUNTIME_DIR" "$INTERNAL_DATA" 2>/dev/null || {
+    mkdir -p "$RUNTIME_DIR" "$USERDATA_DIR" "$LOG_DIR" "$INTERNAL_DATA" 2>/dev/null || {
         log_msg "failed to create runtime directory: $RUNTIME_DIR"
         return 1
     }
@@ -398,11 +400,11 @@ export UMRK_PLATFORM_PATH="${UMRK_PLATFORM_PATH:-$PLATFORM_ROOT}"
 export UMRK_LAUNCHER_PATH="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
 export UMRK_BIN_PATH="${UMRK_BIN_PATH:-$BUNDLE/bin}"
 export UMRK_RUNTIME_PATH="${UMRK_RUNTIME_PATH:-$RUNTIME_DIR}"
-export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
 export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
-export USERDATA_PATH="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+export USERDATA_PATH="${USERDATA_PATH:-$USERDATA_DIR}"
 export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.userdata/shared}"
-export LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
+export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
 export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
 export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
 export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"

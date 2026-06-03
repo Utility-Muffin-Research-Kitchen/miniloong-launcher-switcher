@@ -1,8 +1,16 @@
 #!/bin/sh
 set -u
 
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-/userdata}"
-LOG="${UMRK_UNINSTALL_LOG:-$INTERNAL_DATA/umrk-launcher-uninstall.log}"
+PLATFORM="${PLATFORM:-mlp1}"
+SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"
+ENV_FILE="${UMRK_ENV_FILE:-$SDCARD_PATH/umrk-launcher/env.sh}"
+if [ -f "$ENV_FILE" ]; then
+    . "$ENV_FILE"
+fi
+
+USERDATA_DIR="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
+LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
+LOG="${UMRK_UNINSTALL_LOG:-$LOG_DIR/umrk-launcher-uninstall.log}"
 TARGET=/loong/loong_pangu
 BACKUP=/loong/loong_pangu.stock.umrk
 

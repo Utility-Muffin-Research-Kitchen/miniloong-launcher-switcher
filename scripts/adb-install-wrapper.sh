@@ -5,7 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build/adb-install"
 INSTALLER="$BUILD_DIR/umrk-launcher-install.sh"
 REMOTE_INSTALLER="/tmp/umrk-launcher-install.sh"
-REMOTE_INTERNAL_DATA_PATH="${REMOTE_INTERNAL_DATA_PATH:-/userdata}"
+REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
+REMOTE_USERDATA_PATH="${REMOTE_USERDATA_PATH:-$REMOTE_SDCARD_PATH/.userdata/mlp1}"
+REMOTE_LOGS_PATH="${REMOTE_LOGS_PATH:-$REMOTE_USERDATA_PATH/logs}"
 
 if [ -n "${ADB_SERIAL:-}" ]; then
     ADB=(adb -s "$ADB_SERIAL")
@@ -30,7 +32,7 @@ echo "Running installer"
 "${ADB[@]}" shell "sh '$REMOTE_INSTALLER'"
 
 echo "Installer log:"
-"${ADB[@]}" shell "tail -80 '$REMOTE_INTERNAL_DATA_PATH/umrk-launcher-install.log' 2>/dev/null || true"
+"${ADB[@]}" shell "tail -80 '$REMOTE_LOGS_PATH/umrk-launcher-install.log' 2>/dev/null || true"
 
 echo
 echo "Wrapper installed. Restart the Loong stack or reboot to exercise it:"
