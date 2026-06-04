@@ -3,7 +3,7 @@
 
 PLATFORM="${PLATFORM:-mlp1}"
 SD_MOUNT="${SDCARD_PATH:-/mnt/sdcard}"
-BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/umrk-launcher}"
+BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
 ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
 if [ -f "$ENV_FILE" ]; then
     . "$ENV_FILE"
@@ -12,17 +12,19 @@ fi
 SD_MOUNT="${SDCARD_PATH:-$SD_MOUNT}"
 BUNDLE="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
 BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
-PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/UMRK/$PLATFORM}}"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
 SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-/media/sdcard1}"
 STOCK=/loong/loong_pangu.stock.umrk
+STORAGE=/loong/loong_storage
+STORAGE_BACKUP=/loong/loong_storage.stock.umrk
 STOCK_RUN_DIR="${UMRK_STOCK_RUN_DIR:-${TMPDIR:-/tmp}/umrk-stock-pangu}"
 STOCK_RUN_BIN="$STOCK_RUN_DIR/loong_pangu"
 RUNTIME_DIR="${UMRK_RUNTIME_PATH:-${TMPDIR:-/tmp}/jawaka-runtime}"
-USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
 LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
 INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$USERDATA_DIR}"
 LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-launcher.log}"
-MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.umrk-launcher}"
+MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
 CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-${TMPDIR:-/tmp}/umrk-clean-exit}"
 EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-${TMPDIR:-/tmp}/umrk-exit-to-stock}"
@@ -52,8 +54,8 @@ mountpoint_is_mounted() {
 launcher_candidate_ready() {
     root="$1"
     [ -n "$root" ] || return 1
-    [ -e "$root/.umrk-launcher" ] || return 1
-    [ -f "$root/umrk-launcher/bin/loong_pangu" ] || return 1
+    [ -e "$root/.system/leaf/enabled" ] || return 1
+    [ -f "$root/.system/leaf/launcher/bin/loong_pangu" ] || return 1
     return 0
 }
 
@@ -62,15 +64,15 @@ set_active_launcher_sd() {
     alternate="$2"
 
     export SDCARD_PATH="$active"
-    export SYSTEM_PATH="$active/UMRK/$PLATFORM"
+    export SYSTEM_PATH="$active/.system/leaf/platforms/$PLATFORM"
     export UMRK_PLATFORM_PATH="$SYSTEM_PATH"
-    export UMRK_LAUNCHER_PATH="$active/umrk-launcher"
+    export UMRK_LAUNCHER_PATH="$active/.system/leaf/launcher"
     export UMRK_BIN_PATH="$UMRK_LAUNCHER_PATH/bin"
-    export USERDATA_PATH="$active/.userdata/$PLATFORM"
-    export SHARED_USERDATA_PATH="$active/.userdata/shared"
+    export USERDATA_PATH="$active/.system/leaf/userdata/$PLATFORM"
+    export SHARED_USERDATA_PATH="$active/.system/leaf/userdata/shared"
     export LOGS_PATH="$USERDATA_PATH/logs"
-    export UMRK_INTERNAL_DATA_PATH="$USERDATA_PATH"
-    export UMRK_MARKER_PATH="$active/.umrk-launcher"
+    export UMRK_INTERNAL_DATA_PATH="$active/.system/leaf/state"
+    export UMRK_MARKER_PATH="$active/.system/leaf/enabled"
 
     if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
        mountpoint_is_mounted "$alternate"; then
@@ -101,16 +103,16 @@ set_active_launcher_sd() {
     fi
 
     SD_MOUNT="${SDCARD_PATH:-$active}"
-    BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/umrk-launcher}"
+    BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
     BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
-    PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/UMRK/$PLATFORM}}"
+    PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
     SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
     RUNTIME_DIR="${UMRK_RUNTIME_PATH:-${TMPDIR:-/tmp}/jawaka-runtime}"
-    USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.userdata/$PLATFORM}"
+    USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
     LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
     INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$USERDATA_DIR}"
     LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-launcher.log}"
-    MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.umrk-launcher}"
+    MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
     CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 }
 
@@ -225,6 +227,64 @@ restore_sd_noexec() {
     remount_sd_mode noexec || log_msg "best-effort noexec restore failed"
 }
 
+is_umrk_noop_storage() {
+    [ -f "$STORAGE" ] && grep -q "umrk-noop" "$STORAGE" 2>/dev/null
+}
+
+restore_stock_storage() {
+    is_umrk_noop_storage || return 0
+
+    if [ ! -f "$STORAGE_BACKUP" ]; then
+        log_msg "loong_storage is noop but backup missing: $STORAGE_BACKUP"
+        return 1
+    fi
+
+    if cp -p "$STORAGE_BACKUP" "$STORAGE" 2>/dev/null; then
+        chmod 0775 "$STORAGE" 2>/dev/null || chmod 755 "$STORAGE" 2>/dev/null || true
+        sync
+        log_msg "restored stock loong_storage"
+    else
+        log_msg "failed to restore $STORAGE from $STORAGE_BACKUP"
+        return 1
+    fi
+
+    if pidof loong_storage >/dev/null 2>&1; then
+        killall loong_storage 2>/dev/null || true
+        sleep 1
+    fi
+}
+
+disable_stock_storage() {
+    # Stop loong_storage from remounting the SD card read-only. The custom
+    # launcher needs persistent rw access for its SQLite database, settings,
+    # and saves. loong_daemon's keepStorageAlive respawns this path, so
+    # atomically replace it with a no-op sleeper before killing any currently
+    # mapped stock process.
+    if [ -x "$STORAGE" ] && ! is_umrk_noop_storage; then
+        if [ ! -f "$STORAGE_BACKUP" ]; then
+            if cp -p "$STORAGE" "$STORAGE_BACKUP" 2>/dev/null; then
+                log_msg "backed up loong_storage to $STORAGE_BACKUP"
+            else
+                log_msg "failed to back up loong_storage; leaving stock loong_storage active"
+                return 1
+            fi
+        fi
+        storage_tmp="/tmp/loong_storage.umrk-noop.$$"
+        if printf '#!/bin/sh\n# umrk-noop: loong_storage disabled by launcher switcher\nwhile true; do sleep 3600; done\n' > "$storage_tmp" &&
+           chmod 755 "$storage_tmp" &&
+           mv -f "$storage_tmp" "$STORAGE"; then
+            log_msg "replaced loong_storage with noop sleeper"
+        else
+            rm -f "$storage_tmp" 2>/dev/null || true
+            log_msg "failed to replace loong_storage with noop sleeper"
+        fi
+    fi
+    if pidof loong_storage >/dev/null 2>&1; then
+        killall loong_storage 2>/dev/null || true
+        sleep 1
+    fi
+}
+
 remount_secondary_sd_exec() {
     [ "$PLATFORM" = "mlp1" ] || return 0
     mountpoint_is_mounted "$SECONDARY_SD_MOUNT" || return 0
@@ -303,6 +363,7 @@ check_crash_loop() {
 
 exec_stock() {
     restore_sd_noexec
+    restore_stock_storage || true
     kill_stale_custom_launcher
 
     if [ ! -x "$STOCK" ]; then
@@ -431,29 +492,7 @@ if ! preflight_jawaka_bundle; then
     exec_stock "$@"
 fi
 
-# Stop loong_storage from remounting the SD card read-only. The custom launcher
-# needs persistent rw access for its SQLite database, settings, and saves.
-# loong_daemon's keepStorageAlive respawns this path, so atomically replace it
-# with a no-op sleeper before killing any currently mapped stock process.
-if [ -x /loong/loong_storage ] && ! grep -q "umrk-noop" /loong/loong_storage 2>/dev/null; then
-    if [ ! -f /loong/loong_storage.stock.umrk ]; then
-        cp /loong/loong_storage /loong/loong_storage.stock.umrk 2>/dev/null || true
-        log_msg "backed up loong_storage to loong_storage.stock.umrk"
-    fi
-    storage_tmp="/tmp/loong_storage.umrk-noop.$$"
-    if printf '#!/bin/sh\n# umrk-noop: loong_storage disabled by launcher switcher\nwhile true; do sleep 3600; done\n' > "$storage_tmp" &&
-       chmod 755 "$storage_tmp" &&
-       mv -f "$storage_tmp" /loong/loong_storage; then
-        log_msg "replaced loong_storage with noop sleeper"
-    else
-        rm -f "$storage_tmp" 2>/dev/null || true
-        log_msg "failed to replace loong_storage with noop sleeper"
-    fi
-fi
-if pidof loong_storage >/dev/null 2>&1; then
-    killall loong_storage 2>/dev/null || true
-    sleep 1
-fi
+disable_stock_storage
 
 # Run platform boot scripts from the SD card hook directory. Each executable
 # file in platform.d/ is sourced in sorted order before the launcher starts.
@@ -485,7 +524,7 @@ export UMRK_BIN_PATH="${UMRK_BIN_PATH:-$BUNDLE/bin}"
 export UMRK_RUNTIME_PATH="${UMRK_RUNTIME_PATH:-$RUNTIME_DIR}"
 export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
 export USERDATA_PATH="${USERDATA_PATH:-$USERDATA_DIR}"
-export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.userdata/shared}"
+export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/shared}"
 export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
 export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
 export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"

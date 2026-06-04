@@ -36,31 +36,31 @@ umrk_env_default DEVICE "$PLATFORM"
 case "$PLATFORM" in
     mlp1)
         _umrk_default_sd="/mnt/sdcard"
-        _umrk_default_system_rel="UMRK/$PLATFORM"
-        _umrk_default_launcher_rel="umrk-launcher"
+        _umrk_default_system_rel=".system/leaf/platforms/$PLATFORM"
+        _umrk_default_launcher_rel=".system/leaf/launcher"
         _umrk_default_runtime="${TMPDIR:-/tmp}/jawaka-runtime"
-        _umrk_default_internal=""
+        _umrk_default_internal_rel=".system/leaf/state"
         ;;
     tg5040|tg5050|my355)
         _umrk_default_sd="/mnt/SDCARD"
-        _umrk_default_system_rel=".system/$PLATFORM"
-        _umrk_default_launcher_rel=".system/$PLATFORM"
+        _umrk_default_system_rel=".system/leaf/platforms/$PLATFORM"
+        _umrk_default_launcher_rel=".system/leaf/launcher"
         _umrk_default_runtime="${TMPDIR:-/tmp}/umrk-runtime-$PLATFORM"
-        _umrk_default_internal=""
+        _umrk_default_internal_rel=".system/leaf/state"
         ;;
     mac)
         _umrk_default_sd="./mock-sdcard"
-        _umrk_default_system_rel="UMRK/$PLATFORM"
-        _umrk_default_launcher_rel="umrk-launcher"
+        _umrk_default_system_rel=".system/leaf/platforms/$PLATFORM"
+        _umrk_default_launcher_rel=".system/leaf/launcher"
         _umrk_default_runtime="${TMPDIR:-/tmp}/jawaka-${USER:-user}"
-        _umrk_default_internal=""
+        _umrk_default_internal_rel=".system/leaf/state"
         ;;
     *)
         _umrk_default_sd="/mnt/SDCARD"
-        _umrk_default_system_rel="UMRK/$PLATFORM"
-        _umrk_default_launcher_rel="umrk-launcher"
+        _umrk_default_system_rel=".system/leaf/platforms/$PLATFORM"
+        _umrk_default_launcher_rel=".system/leaf/launcher"
         _umrk_default_runtime="${TMPDIR:-/tmp}/umrk-runtime-$PLATFORM"
-        _umrk_default_internal=""
+        _umrk_default_internal_rel=".system/leaf/state"
         ;;
 esac
 
@@ -70,8 +70,8 @@ umrk_env_default UMRK_PLATFORM_PATH "$SYSTEM_PATH"
 umrk_env_default UMRK_LAUNCHER_PATH "$SDCARD_PATH/$_umrk_default_launcher_rel"
 umrk_env_default UMRK_BIN_PATH "$UMRK_LAUNCHER_PATH/bin"
 
-umrk_env_default USERDATA_PATH "$SDCARD_PATH/.userdata/$PLATFORM"
-umrk_env_default SHARED_USERDATA_PATH "$SDCARD_PATH/.userdata/shared"
+umrk_env_default USERDATA_PATH "$SDCARD_PATH/.system/leaf/userdata/$PLATFORM"
+umrk_env_default SHARED_USERDATA_PATH "$SDCARD_PATH/.system/leaf/userdata/shared"
 umrk_env_default LOGS_PATH "$USERDATA_PATH/logs"
 umrk_env_default ROMS_PATH "$SDCARD_PATH/Roms"
 umrk_env_default IMAGES_PATH "$SDCARD_PATH/Images"
@@ -117,7 +117,8 @@ umrk_env_default SAVES_PATHS "$_umrk_saves_paths"
 umrk_env_default STATES_PATHS "$_umrk_states_paths"
 umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
 
-umrk_env_default UMRK_INTERNAL_DATA_PATH "${_umrk_default_internal:-$USERDATA_PATH}"
+umrk_env_default UMRK_INTERNAL_DATA_PATH "$SDCARD_PATH/$_umrk_default_internal_rel"
+umrk_env_default UMRK_MARKER_PATH "$SDCARD_PATH/.system/leaf/enabled"
 
 umrk_env_default UMRK_RETROARCH_BIN "$SYSTEM_PATH/bin/retroarch"
 umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
@@ -144,6 +145,6 @@ umrk_env_default CAT_SHOW_HINTS "1"
 
 unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel
-unset _umrk_default_runtime _umrk_default_internal
+unset _umrk_default_runtime _umrk_default_internal_rel
 unset _umrk_sdcard_paths _umrk_roms_paths _umrk_images_paths _umrk_apps_paths
 unset _umrk_bios_paths _umrk_saves_paths _umrk_states_paths _umrk_cheats_paths

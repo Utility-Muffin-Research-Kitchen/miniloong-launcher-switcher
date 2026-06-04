@@ -1,43 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODE="${1:-}"
-REQUESTED_REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-auto}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="${LEAF_WORKSPACE_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+LEAF_SCRIPT="$WORKSPACE_DIR/Leaf/scripts/$(basename "$0")"
 
-case "$MODE" in
-    on|--on|enable|--enable)
-        MODE="on"
-        ;;
-    off|--off|disable|--disable)
-        MODE="off"
-        ;;
-    *)
-        echo "usage: $0 on|off" >&2
-        exit 1
-        ;;
-esac
-
-if [ -n "${ADB_SERIAL:-}" ]; then
-    serial="$ADB_SERIAL"
-else
-    serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
-    if [ -z "${serial:-}" ]; then
-        echo "No online adb device found." >&2
-        exit 1
-    fi
+if [ ! -x "$LEAF_SCRIPT" ]; then
+    echo "Leaf deploy helper not found: $LEAF_SCRIPT" >&2
+    echo "Run this command from the Leaf repo: make adb-enable-marker or scripts/adb-set-marker.sh on" >&2
+    exit 1
 fi
-ADB=(adb -s "$serial")
 
-echo "Using adb device: $("${ADB[@]}" get-serialno)"
-
-REMOTE_SDCARD_PATH="$(REMOTE_SDCARD_PATH="$REQUESTED_REMOTE_SDCARD_PATH" ADB_SERIAL="$serial" "$ROOT_DIR/scripts/adb-resolve-umrk-sd.sh")"
-MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
-
-if [ "$MODE" = "on" ]; then
-    "${ADB[@]}" shell "touch '$MARKER' && sync"
-    echo "Marker enabled: $MARKER"
-else
-    "${ADB[@]}" shell "rm -f '$MARKER' && sync"
-    echo "Marker disabled: $MARKER"
-fi
+exec "$LEAF_SCRIPT" "$@"

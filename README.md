@@ -4,12 +4,11 @@ Standalone launcher replacement installer for the Miniloong Pocket 1.
 
 This project is intentionally separate from `miniloong-adb-keeper`. It reuses
 the known `loong_upgrade` SD update mechanism, and owns the payload generator,
-installer, logs, wrapper, device defaults, and recovery scripts.
+installer, wrapper, device defaults, and recovery payloads.
 
 It does **not** build the launcher itself. The launcher payload (Jawaka binaries
-plus Catastrophe/RetroArch/cores assets) is assembled by the UMRK workspace
-orchestrator; this repo wraps that payload into an installable SD/ADB bundle.
-See the workspace `make stage-jawaka` / `make assemble-jawaka`.
+plus Catastrophe/RetroArch/cores assets) is assembled and staged by the sibling
+`Leaf` repo. See `Leaf` for `make stage-jawaka` / `make assemble-jawaka`.
 
 ## Contract
 
@@ -76,14 +75,15 @@ build/sd/
   loong_upgrade
   launcher_probe.bin
   umrk-launcher-install.sh
-  umrk-launcher/
-    bin/loong_pangu
-    bin/jawaka-launcher
-    bin/jawaka-menu
-    res/
-  UMRK/mlp1/
-    manifest.json
-    defaults/
+  .system/leaf/
+    launcher/
+      bin/loong_pangu
+      bin/jawaka-launcher
+      bin/jawaka-menu
+      res/
+    platforms/mlp1/
+      manifest.json
+      defaults/
 ```
 
 It does not enable the runtime marker by default. To generate a marked payload
@@ -98,13 +98,16 @@ this update path.
 
 ## ADB Tests
 
+ADB deploy/control helpers live in `Leaf`. The compatibility targets in this
+repo delegate there when a sibling `Leaf` checkout is available.
+
 Install the wrapper over ADB:
 
 ```sh
 make adb-install-wrapper
 ```
 
-Stage the launcher bundle on the active UMRK SD card and enable the marker
+Stage the launcher bundle on the active Leaf SD card and enable the marker
 (point `BUNDLE_ROOT` at the assembled payload):
 
 ```sh
@@ -113,10 +116,11 @@ adb shell '/etc/init.d/S50loong restart'
 ```
 
 ADB staging defaults `REMOTE_SDCARD_PATH` to `auto`. It resolves the mounted
-card with `.umrk-launcher` and/or `umrk-launcher/bin/loong_pangu`, uses the
-only mounted SD on one-card boots, and fails instead of guessing when two
-mounted cards are ambiguous. For first-time two-card staging or an intentional
-override, pass `REMOTE_SDCARD_PATH=/mnt/sdcard` or
+card with `.system/leaf/enabled` and/or
+`.system/leaf/launcher/bin/loong_pangu`, uses the only mounted SD on one-card
+boots, and fails instead of guessing when two mounted cards are ambiguous. For
+first-time two-card staging or an intentional override, pass
+`REMOTE_SDCARD_PATH=/mnt/sdcard` or
 `REMOTE_SDCARD_PATH=/media/sdcard1`.
 
 Stage the launcher bundle without activating it:
@@ -148,10 +152,10 @@ Tail switcher logs:
 make adb-tail-logs
 ```
 
-To stage directly from the workspace (assemble + push + activate in one step):
+To stage directly from Leaf (assemble + push + activate in one step):
 
 ```sh
-make stage-jawaka DEVICE=mlp1
+make -C ../Leaf stage-jawaka DEVICE=mlp1
 ```
 
 The installed switcher wrapper has crash-loop protection. If the marker is
@@ -202,4 +206,6 @@ adb shell '/usr/bin/umrk-launcher-switcher-uninstall.sh'
 ```
 
 The uninstall script restores `/loong/loong_pangu` from
-`/loong/loong_pangu.stock.umrk`.
+`/loong/loong_pangu.stock.umrk`. If UMRK replaced `/loong/loong_storage`
+with the no-op sleeper, uninstall also restores it from
+`/loong/loong_storage.stock.umrk`.

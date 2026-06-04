@@ -4,7 +4,7 @@
 # Runs on every boot but the copy only happens once.
 
 STAMP="/loong/textures/.umrk-boot-installed"
-SRC="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/UMRK/${PLATFORM:-mlp1}}}/boot-animation"
+SRC="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/.system/leaf/platforms/${PLATFORM:-mlp1}}}/boot-animation"
 
 # Already installed — nothing to do.
 [ -f "$STAMP" ] && exit 0

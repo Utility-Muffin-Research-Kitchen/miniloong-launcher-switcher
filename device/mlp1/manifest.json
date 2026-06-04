@@ -6,7 +6,7 @@
   "cores_dir_relpath": "cores",
   "info_dir_relpath": "info",
   "defaults_dir_relpath": "defaults",
-  "theme_dir_relpath": "../../umrk-launcher/res/themes",
+  "theme_dir_relpath": "../../launcher/res/themes",
   "source_repos": {
     "launcher": "Jawaka",
     "switcher": "miniloong-launcher-switcher",

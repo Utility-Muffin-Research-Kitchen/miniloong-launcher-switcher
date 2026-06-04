@@ -1,39 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/build/adb-install"
-INSTALLER="$BUILD_DIR/umrk-launcher-install.sh"
-REMOTE_INSTALLER="/tmp/umrk-launcher-install.sh"
-REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
-REMOTE_USERDATA_PATH="${REMOTE_USERDATA_PATH:-$REMOTE_SDCARD_PATH/.userdata/mlp1}"
-REMOTE_LOGS_PATH="${REMOTE_LOGS_PATH:-$REMOTE_USERDATA_PATH/logs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="${LEAF_WORKSPACE_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+LEAF_SCRIPT="$WORKSPACE_DIR/Leaf/scripts/$(basename "$0")"
 
-if [ -n "${ADB_SERIAL:-}" ]; then
-    ADB=(adb -s "$ADB_SERIAL")
-else
-    serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
-    if [ -z "${serial:-}" ]; then
-        echo "No online adb device found." >&2
-        exit 1
-    fi
-    ADB=(adb -s "$serial")
+if [ ! -x "$LEAF_SCRIPT" ]; then
+    echo "Leaf deploy helper not found: $LEAF_SCRIPT" >&2
+    echo "Run this command from the Leaf repo: scripts/adb-install-wrapper.sh" >&2
+    exit 1
 fi
 
-echo "Using adb device: $("${ADB[@]}" get-serialno)"
-
-python3 "$ROOT_DIR/make_launcher_switcher_sd.py" --force "$BUILD_DIR" >/dev/null
-
-echo "Pushing installer to $REMOTE_INSTALLER"
-"${ADB[@]}" push "$INSTALLER" "$REMOTE_INSTALLER" >/dev/null
-"${ADB[@]}" shell "chmod 755 '$REMOTE_INSTALLER'"
-
-echo "Running installer"
-"${ADB[@]}" shell "sh '$REMOTE_INSTALLER'"
-
-echo "Installer log:"
-"${ADB[@]}" shell "tail -80 '$REMOTE_LOGS_PATH/umrk-launcher-install.log' 2>/dev/null || true"
-
-echo
-echo "Wrapper installed. Restart the Loong stack or reboot to exercise it:"
-echo "  adb shell '/etc/init.d/S50loong restart'"
+exec "$LEAF_SCRIPT" "$@"

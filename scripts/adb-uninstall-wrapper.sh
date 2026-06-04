@@ -1,40 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
-REMOTE_USERDATA_PATH="${REMOTE_USERDATA_PATH:-$REMOTE_SDCARD_PATH/.userdata/mlp1}"
-REMOTE_LOGS_PATH="${REMOTE_LOGS_PATH:-$REMOTE_USERDATA_PATH/logs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="${LEAF_WORKSPACE_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+LEAF_SCRIPT="$WORKSPACE_DIR/Leaf/scripts/$(basename "$0")"
 
-if [ -n "${ADB_SERIAL:-}" ]; then
-    ADB=(adb -s "$ADB_SERIAL")
-else
-    serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
-    if [ -z "${serial:-}" ]; then
-        echo "No online adb device found." >&2
-        exit 1
-    fi
-    ADB=(adb -s "$serial")
-fi
-
-echo "Using adb device: $("${ADB[@]}" get-serialno)"
-
-"${ADB[@]}" shell '
-if [ -x /usr/bin/umrk-launcher-switcher-uninstall.sh ]; then
-    /usr/bin/umrk-launcher-switcher-uninstall.sh
-elif [ -f /loong/loong_pangu.stock.umrk ]; then
-    cp -p /loong/loong_pangu.stock.umrk /loong/loong_pangu
-    chmod 755 /loong/loong_pangu
-    sync
-    echo restored stock loong_pangu
-else
-    echo "no uninstaller or stock backup found" >&2
+if [ ! -x "$LEAF_SCRIPT" ]; then
+    echo "Leaf deploy helper not found: $LEAF_SCRIPT" >&2
+    echo "Run this command from the Leaf repo: scripts/adb-uninstall-wrapper.sh" >&2
     exit 1
 fi
-'
 
-echo "Uninstall log:"
-"${ADB[@]}" shell "tail -80 '$REMOTE_LOGS_PATH/umrk-launcher-uninstall.log' 2>/dev/null || true"
-
-echo
-echo "Stock binary restored. Restart the Loong stack or reboot to use it:"
-echo "  adb shell '/etc/init.d/S50loong restart'"
+exec "$LEAF_SCRIPT" "$@"

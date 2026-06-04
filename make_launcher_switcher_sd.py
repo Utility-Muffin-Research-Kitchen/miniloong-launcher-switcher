@@ -127,9 +127,9 @@ set -u
 
 PLATFORM="${{PLATFORM:-mlp1}}"
 SDCARD_PATH="${{SDCARD_PATH:-{MLP1_SDCARD_PATH}}}"
-USERDATA_PATH="${{USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}}"
+USERDATA_PATH="${{USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}}"
 LOGS_PATH="${{LOGS_PATH:-$USERDATA_PATH/logs}}"
-INTERNAL_DATA="${{UMRK_INTERNAL_DATA_PATH:-$USERDATA_PATH}}"
+INTERNAL_DATA="${{UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 TARGET=/loong/loong_pangu
 BACKUP=/loong/loong_pangu.stock.umrk
@@ -196,7 +196,7 @@ def install_command() -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
-        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "INSTALL_LOG=$LOGS_PATH/umrk-launcher-install-command.log; "
@@ -212,9 +212,9 @@ def probe_command() -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
-        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
-        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$USERDATA_PATH}; "
+        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}; "
         "mkdir -p $LOGS_PATH $INTERNAL_DATA 2>/dev/null || true; "
         "LOG=$LOGS_PATH/umrk-launcher-probe.log; "
         "printf 'launcher switcher probe started\\n' >$LOG 2>/dev/null || true; "

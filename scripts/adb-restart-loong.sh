@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -n "${ADB_SERIAL:-}" ]; then
-    ADB=(adb -s "$ADB_SERIAL")
-else
-    serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
-    if [ -z "${serial:-}" ]; then
-        echo "No online adb device found." >&2
-        exit 1
-    fi
-    ADB=(adb -s "$serial")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="${LEAF_WORKSPACE_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+LEAF_SCRIPT="$WORKSPACE_DIR/Leaf/scripts/$(basename "$0")"
+
+if [ ! -x "$LEAF_SCRIPT" ]; then
+    echo "Leaf deploy helper not found: $LEAF_SCRIPT" >&2
+    echo "Run this command from the Leaf repo: make refresh-jawaka DEVICE=mlp1" >&2
+    exit 1
 fi
 
-echo "Using adb device: $("${ADB[@]}" get-serialno)"
-echo "Restarting Loong stack..."
-"${ADB[@]}" shell '/etc/init.d/S50loong restart'
+exec "$LEAF_SCRIPT" "$@"
