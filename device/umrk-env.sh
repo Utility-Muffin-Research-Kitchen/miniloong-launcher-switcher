@@ -134,6 +134,13 @@ umrk_env_default CAT_FONTS_DIR "$UMRK_LAUNCHER_PATH/res"
 umrk_env_default CAT_STATUS_ASSETS_DIR "$UMRK_LAUNCHER_PATH/res/assets"
 umrk_env_default CAT_THEME_NAME "Jawaka-Tabs"
 umrk_env_default CAT_FONT_PATH "fonts/SpaceGrotesk/SpaceGrotesk-Regular.ttf"
+# Status-bar / hint chrome for direct/manual pak launches. jawakad overrides
+# these with the live persisted prefs; these defaults match the launcher's own.
+umrk_env_default CAT_STATUS_SHOW_WIFI "1"
+umrk_env_default CAT_STATUS_SHOW_BATTERY "1"
+umrk_env_default CAT_STATUS_SHOW_BATTERY_LEVEL "0"
+umrk_env_default CAT_STATUS_CLOCK "24"
+umrk_env_default CAT_SHOW_HINTS "1"
 
 unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel

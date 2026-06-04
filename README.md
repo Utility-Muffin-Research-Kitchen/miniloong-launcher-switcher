@@ -104,13 +104,20 @@ Install the wrapper over ADB:
 make adb-install-wrapper
 ```
 
-Stage the launcher bundle on the mounted SD card and enable the marker
+Stage the launcher bundle on the active UMRK SD card and enable the marker
 (point `BUNDLE_ROOT` at the assembled payload):
 
 ```sh
 make adb-stage-sd-bundle BUNDLE_ROOT=../build/stage/mlp1/package
 adb shell '/etc/init.d/S50loong restart'
 ```
+
+ADB staging defaults `REMOTE_SDCARD_PATH` to `auto`. It resolves the mounted
+card with `.umrk-launcher` and/or `umrk-launcher/bin/loong_pangu`, uses the
+only mounted SD on one-card boots, and fails instead of guessing when two
+mounted cards are ambiguous. For first-time two-card staging or an intentional
+override, pass `REMOTE_SDCARD_PATH=/mnt/sdcard` or
+`REMOTE_SDCARD_PATH=/media/sdcard1`.
 
 Stage the launcher bundle without activating it:
 
@@ -151,9 +158,8 @@ The installed switcher wrapper has crash-loop protection. If the marker is
 present and the custom launcher path is entered repeatedly within a short
 window, it disables the marker and starts stock. Remount failure also disables
 the marker immediately, because the direct-SD Jawaka path cannot run safely
-while the SD-card mount is `noexec`.
-MLP1 defaults `SDCARD_PATH` to `/mnt/sdcard`; override `REMOTE_SDCARD_PATH`
-for ADB staging tests when needed.
+while the SD-card mount is `noexec`. Runtime `SDCARD_PATH` still defaults to
+`/mnt/sdcard`; deploy-time `REMOTE_SDCARD_PATH` defaults to auto-resolution.
 
 ## SD Install
 

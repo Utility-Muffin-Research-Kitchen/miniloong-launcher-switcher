@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-}"
-REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
-MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
+REQUESTED_REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-auto}"
 
 case "$MODE" in
     on|--on|enable|--enable)
@@ -19,22 +19,20 @@ case "$MODE" in
 esac
 
 if [ -n "${ADB_SERIAL:-}" ]; then
-    ADB=(adb -s "$ADB_SERIAL")
+    serial="$ADB_SERIAL"
 else
     serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
     if [ -z "${serial:-}" ]; then
         echo "No online adb device found." >&2
         exit 1
     fi
-    ADB=(adb -s "$serial")
 fi
+ADB=(adb -s "$serial")
 
 echo "Using adb device: $("${ADB[@]}" get-serialno)"
 
-"${ADB[@]}" shell "mountpoint -q '$REMOTE_SDCARD_PATH'" >/dev/null || {
-    echo "$REMOTE_SDCARD_PATH is not mounted on the device." >&2
-    exit 1
-}
+REMOTE_SDCARD_PATH="$(REMOTE_SDCARD_PATH="$REQUESTED_REMOTE_SDCARD_PATH" ADB_SERIAL="$serial" "$ROOT_DIR/scripts/adb-resolve-umrk-sd.sh")"
+MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
 
 if [ "$MODE" = "on" ]; then
     "${ADB[@]}" shell "touch '$MARKER' && sync"
