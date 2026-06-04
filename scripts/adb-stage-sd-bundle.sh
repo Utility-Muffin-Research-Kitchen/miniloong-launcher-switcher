@@ -7,11 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE_ROOT="${BUNDLE_ROOT:-$ROOT_DIR/build/package}"
 BUNDLE_DIR="$BUNDLE_ROOT/umrk-launcher"
 PLATFORM_DIR="$BUNDLE_ROOT/UMRK"
-REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-/mnt/sdcard}"
-REMOTE_LAUNCHER_PATH="${REMOTE_LAUNCHER_PATH:-${REMOTE_BUNDLE:-$REMOTE_SDCARD_PATH/umrk-launcher}}"
-REMOTE_UMRK_PATH="${REMOTE_UMRK_PATH:-${REMOTE_PLATFORM:-$REMOTE_SDCARD_PATH/UMRK}}"
-REMOTE_PLATFORM_PATH="${REMOTE_PLATFORM_PATH:-$REMOTE_UMRK_PATH/mlp1}"
-MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
+REQUESTED_REMOTE_SDCARD_PATH="${REMOTE_SDCARD_PATH:-auto}"
 MARKER_MODE="keep"
 PLATFORM_MODE="replace"
 
@@ -41,22 +37,23 @@ if [ ! -x "$BUNDLE_DIR/bin/loong_pangu" ]; then
 fi
 
 if [ -n "${ADB_SERIAL:-}" ]; then
-    ADB=(adb -s "$ADB_SERIAL")
+    serial="$ADB_SERIAL"
 else
     serial="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
     if [ -z "${serial:-}" ]; then
         echo "No online adb device found." >&2
         exit 1
     fi
-    ADB=(adb -s "$serial")
 fi
+ADB=(adb -s "$serial")
 
 echo "Using adb device: $("${ADB[@]}" get-serialno)"
 
-"${ADB[@]}" shell "mountpoint -q '$REMOTE_SDCARD_PATH'" >/dev/null || {
-    echo "$REMOTE_SDCARD_PATH is not mounted on the device." >&2
-    exit 1
-}
+REMOTE_SDCARD_PATH="$(REMOTE_SDCARD_PATH="$REQUESTED_REMOTE_SDCARD_PATH" ADB_SERIAL="$serial" "$ROOT_DIR/scripts/adb-resolve-umrk-sd.sh")"
+REMOTE_LAUNCHER_PATH="${REMOTE_LAUNCHER_PATH:-${REMOTE_BUNDLE:-$REMOTE_SDCARD_PATH/umrk-launcher}}"
+REMOTE_UMRK_PATH="${REMOTE_UMRK_PATH:-${REMOTE_PLATFORM:-$REMOTE_SDCARD_PATH/UMRK}}"
+REMOTE_PLATFORM_PATH="${REMOTE_PLATFORM_PATH:-$REMOTE_UMRK_PATH/mlp1}"
+MARKER="${UMRK_MARKER_PATH:-$REMOTE_SDCARD_PATH/.umrk-launcher}"
 
 echo "Deploying bundle to $REMOTE_LAUNCHER_PATH"
 "${ADB[@]}" shell "rm -rf '$REMOTE_LAUNCHER_PATH' && mkdir -p '$REMOTE_LAUNCHER_PATH'"

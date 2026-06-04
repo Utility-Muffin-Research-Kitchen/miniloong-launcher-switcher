@@ -13,6 +13,8 @@ APPS_ROOT="${APPS_PATH:-${SDCARD_PATH:-/mnt/sdcard}/Apps}"
 SSH_CONFIG="$SSH_STATE_ROOT/config.ini"
 SSH_HOSTKEYS="$SSH_STATE_ROOT/hostkeys"
 SSH_LOG="$SSH_STATE_ROOT/logs/dropbear-autostart.log"
+SSH_RUN_DIR="$SSH_STATE_ROOT/run"
+SSH_PIDFILE="$SSH_RUN_DIR/dropbear.pid"
 
 # Only start if the app has been configured at least once.
 if [ ! -f "$SSH_CONFIG" ]; then
@@ -49,6 +51,7 @@ fi
 PORT=$(grep '^bind_address=' "$SSH_CONFIG" 2>/dev/null | grep -o ':[0-9]*$' | tr -d ':')
 PORT="${PORT:-2222}"
 
+mkdir -p "$SSH_RUN_DIR" "${SSH_LOG%/*}" 2>/dev/null || true
 "$DROPBEAR" -r "$SSH_HOSTKEYS/dropbear_ed25519_host_key" \
     -r "$SSH_HOSTKEYS/dropbear_rsa_host_key" \
-    -p "$PORT" -B >>"$SSH_LOG" 2>&1
+    -p "$PORT" -P "$SSH_PIDFILE" -B >>"$SSH_LOG" 2>&1
