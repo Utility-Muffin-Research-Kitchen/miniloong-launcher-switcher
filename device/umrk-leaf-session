@@ -18,6 +18,7 @@ BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
 PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
 INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
 MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
 CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
 EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
@@ -70,6 +71,7 @@ refresh_paths() {
     LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-leaf-session.log}"
     INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
     MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+    ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
     CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
     CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
     EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
@@ -89,6 +91,7 @@ set_active_launcher_sd() {
     export LOGS_PATH="$USERDATA_PATH/logs"
     export UMRK_INTERNAL_DATA_PATH="$active/.system/leaf/state"
     export UMRK_MARKER_PATH="$active/.system/leaf/enabled"
+    export UMRK_ADB_MARKER_PATH="$active/.system/leaf/state/adb-enabled"
 
     if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
        mountpoint_is_mounted "$alternate"; then
@@ -161,6 +164,22 @@ adb_is_pinned() {
         *i*) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+adb_restore_requested() {
+    [ -e "$ADB_MARKER" ]
+}
+
+pin_adb() {
+    [ -x /usr/bin/adbd ] || return 1
+    [ -x /etc/init.d/S50usb-gadget.sh ] || return 1
+    [ -f /etc/.usb_config ] || return 1
+
+    chattr -i /etc/.usb_config >/dev/null 2>&1 || true
+    printf 'usb_adb_en\n' >/etc/.usb_config || return 1
+    chattr +i /etc/.usb_config || return 1
+    sync
+    return 0
 }
 
 option_list_has() {
@@ -489,6 +508,8 @@ export_leaf_env() {
     export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/shared}"
     export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
     export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
+    export UMRK_MARKER_PATH="${UMRK_MARKER_PATH:-$MARKER}"
+    export UMRK_ADB_MARKER_PATH="${UMRK_ADB_MARKER_PATH:-$ADB_MARKER}"
     export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
     export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
     export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
@@ -579,14 +600,19 @@ leaf_start() {
         return 0
     fi
 
-    if ! adb_is_pinned; then
-        pass_to_stock "ADB is not pinned; refusing Leaf mode"
-        return 0
+    if adb_restore_requested && ! adb_is_pinned; then
+        log_msg "ADB restore marker present; pinning ADB"
+        if ! pin_adb; then
+            log_msg "ADB restore failed; continuing Leaf mode without USB ADB"
+        fi
     fi
 
-    if ! start_usb_adb; then
-        pass_to_stock "ADB startup verification failed"
-        return 0
+    if adb_is_pinned; then
+        if ! start_usb_adb; then
+            log_msg "ADB startup verification failed; continuing Leaf mode"
+        fi
+    else
+        log_msg "ADB not pinned; continuing Leaf mode without USB ADB"
     fi
 
     if ! remount_sd_mode exec || ! sd_is_exec; then

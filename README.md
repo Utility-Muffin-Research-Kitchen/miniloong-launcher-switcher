@@ -19,9 +19,11 @@ The switcher installs one early init hook and one session supervisor:
 /usr/bin/umrk-leaf-session
 ```
 
-It does not replace `/loong/loong_pangu` or `/loong/loong_storage`. New
-installs require ADB to be pinned first by `miniloong-adb-keeper`; the installer
-refuses unless `/etc/.usb_config` is `usb_adb_en` and immutable.
+It does not replace `/loong/loong_pangu` or `/loong/loong_storage`. The SD
+installer still requires ADB to be pinned first by `miniloong-adb-keeper` and
+refuses unless `/etc/.usb_config` is `usb_adb_en` and immutable. Alternate
+install paths may boot Leaf before ADB is pinned; Jawaka's Network settings can
+enable ADB from the device UI.
 
 At boot, `S50leaf` runs before stock `S50loong`. If the Leaf marker and bundle
 are ready, the hook blocks `rcS`, starts only the minimal Leaf-owned runtime,
@@ -31,9 +33,12 @@ and runs:
 UMRK_BIN_PATH/loong_pangu
 ```
 
-If the marker is absent, a stock `loong_upgrade` payload is present, ADB is not
-pinned, the SD cannot be remounted `exec`, or the bundle is incomplete, the hook
-exits `0` so stock boot continues into `S50loong`.
+If the marker is absent, a stock `loong_upgrade` payload is present, the SD
+cannot be remounted `exec`, or the bundle is incomplete, the hook exits `0` so
+stock boot continues into `S50loong`. ADB is optional for entering Leaf mode: if
+Jawaka has written the Leaf ADB restore marker, the hook repairs
+`/etc/.usb_config` with the immutable `usb_adb_en` pin before starting USB ADB;
+otherwise it continues without USB ADB so the user can enable it from Settings.
 
 On MLP1, if `/mnt/sdcard` does not contain the marker/bundle and
 `/media/sdcard1` does, the session treats `/media/sdcard1` as the active Leaf
@@ -41,8 +46,9 @@ SD for that boot. This recovers from two-card boots where StockOS assigns the
 UMRK card to the secondary mount.
 
 Leaf mode deliberately skips stock `loong_daemon`, `loong_storage`,
-`loong_service`, `loong_input`, and stock `loong_pangu`. It starts ADB/USB,
-PulseAudio, `loong_power`, and `loong_light`, then Jawaka. Jawaka's
+`loong_service`, `loong_input`, and stock `loong_pangu`. It starts USB ADB only
+when ADB is pinned, then starts PulseAudio, `loong_power`, and `loong_light`,
+then Jawaka. Jawaka's
 `Exit to Stock` menu item writes a tmpfs sentinel; the session cleans up
 Leaf-owned processes and exits, allowing the same boot to continue into stock.
 
@@ -185,7 +191,7 @@ diskutil eject "/Volumes/SDCARD_NAME"
 
 Boot the MLP1 with the SD inserted. The device will enter the stock update
 screen while the installer runs. The installer renames `loong_upgrade` to
-`loong_upgrade.used`, verifies pinned ADB, restores any legacy UMRK
+`loong_upgrade.used`, verifies pinned ADB for the SD installer, restores any legacy UMRK
 `loong_pangu`/`loong_storage` wrappers, installs the init hook/session, then
 returns to the stock update command path, which intentionally sleeps forever to
 avoid a full upgrade attempt. Power off after install, then boot normally.

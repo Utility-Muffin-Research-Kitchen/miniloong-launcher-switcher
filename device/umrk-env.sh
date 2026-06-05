@@ -119,6 +119,7 @@ umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
 
 umrk_env_default UMRK_INTERNAL_DATA_PATH "$SDCARD_PATH/$_umrk_default_internal_rel"
 umrk_env_default UMRK_MARKER_PATH "$SDCARD_PATH/.system/leaf/enabled"
+umrk_env_default UMRK_ADB_MARKER_PATH "$UMRK_INTERNAL_DATA_PATH/adb-enabled"
 
 umrk_env_default UMRK_RETROARCH_BIN "$SYSTEM_PATH/bin/retroarch"
 umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
