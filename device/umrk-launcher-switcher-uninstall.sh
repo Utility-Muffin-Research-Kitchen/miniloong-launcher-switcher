@@ -15,6 +15,8 @@ TARGET=/loong/loong_pangu
 BACKUP=/loong/loong_pangu.stock.umrk
 STORAGE=/loong/loong_storage
 STORAGE_BACKUP=/loong/loong_storage.stock.umrk
+HOOK=/etc/init.d/S50leaf
+SESSION=/usr/bin/umrk-leaf-session
 
 log_msg() {
     log_dir="${LOG%/*}"
@@ -26,6 +28,10 @@ log_msg() {
 
 is_umrk_noop_storage() {
     [ -f "$STORAGE" ] && grep -q "umrk-noop" "$STORAGE" 2>/dev/null
+}
+
+is_old_umrk_pangu_wrapper() {
+    [ -f "$TARGET" ] && grep -q "UMRK_LAUNCHER_SWITCHER_WRAPPER=1" "$TARGET" 2>/dev/null
 }
 
 restore_stock_storage() {
@@ -58,22 +64,31 @@ log_msg "uninstall starting"
 storage_restore_status=0
 restore_stock_storage || storage_restore_status=$?
 
-if [ ! -f "$BACKUP" ]; then
-    log_msg "backup missing: $BACKUP"
-    echo "backup missing: $BACKUP" >&2
-    exit 1
+rm -f "$HOOK" "$SESSION" 2>/dev/null || true
+log_msg "removed init hook/session"
+echo "removed init hook/session"
+
+if is_old_umrk_pangu_wrapper; then
+    if [ ! -f "$BACKUP" ]; then
+        log_msg "legacy pangu wrapper present but backup missing: $BACKUP"
+        echo "legacy pangu wrapper present but backup missing: $BACKUP" >&2
+        exit 1
+    fi
+
+    cp -p "$BACKUP" "$TARGET" || {
+        log_msg "failed to restore $TARGET"
+        echo "failed to restore $TARGET" >&2
+        exit 1
+    }
+    chmod 755 "$TARGET" 2>/dev/null || true
+    log_msg "restored stock loong_pangu"
+    echo "restored stock loong_pangu"
+else
+    log_msg "stock loong_pangu left untouched"
+    echo "stock loong_pangu left untouched"
 fi
 
-cp -p "$BACKUP" "$TARGET" || {
-    log_msg "failed to restore $TARGET"
-    echo "failed to restore $TARGET" >&2
-    exit 1
-}
-chmod 755 "$TARGET" 2>/dev/null || true
 sync
-
-log_msg "restored stock loong_pangu"
-echo "restored stock loong_pangu"
 
 if [ "$storage_restore_status" -ne 0 ]; then
     exit "$storage_restore_status"

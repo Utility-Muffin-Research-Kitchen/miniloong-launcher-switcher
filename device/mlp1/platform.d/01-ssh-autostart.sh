@@ -1,8 +1,7 @@
 #!/bin/sh
 # Start the Dropbear SSH server if it was previously configured.
-# Runs as a platform.d boot hook — the launcher switcher wrapper executes
-# this before Jawaka starts. Config and host keys are owned by the SSH
-# server app under the first-SD userdata root.
+# Runs as a platform.d boot hook before Jawaka starts. Config and host keys are
+# owned by the SSH server app under the first-SD userdata root.
 
 PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"

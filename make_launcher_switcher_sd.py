@@ -15,7 +15,8 @@ INSTALLER_NAME = "umrk-launcher-install.sh"
 MLP1_SDCARD_PATH = "/mnt/sdcard"
 
 ROOT_DIR = Path(__file__).resolve().parent
-WRAPPER_PATH = ROOT_DIR / "device" / "loong_pangu.wrapper"
+HOOK_PATH = ROOT_DIR / "device" / "S50leaf"
+SESSION_PATH = ROOT_DIR / "device" / "umrk-leaf-session"
 UNINSTALLER_PATH = ROOT_DIR / "device" / "umrk-launcher-switcher-uninstall.sh"
 
 MASK64 = (1 << 64) - 1
@@ -118,78 +119,128 @@ def read_required(path: Path) -> str:
         raise SystemExit(f"missing required file: {path}")
     return path.read_text(encoding="utf-8")
 
-
 def build_installer_script() -> str:
-    wrapper = read_required(WRAPPER_PATH).rstrip()
+    hook = read_required(HOOK_PATH).rstrip()
+    session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
-    return f"""#!/bin/sh
+    template = """#!/bin/sh
 set -u
 
-PLATFORM="${{PLATFORM:-mlp1}}"
-SDCARD_PATH="${{SDCARD_PATH:-{MLP1_SDCARD_PATH}}}"
-USERDATA_PATH="${{USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}}"
-LOGS_PATH="${{LOGS_PATH:-$USERDATA_PATH/logs}}"
-INTERNAL_DATA="${{UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}}"
+PLATFORM="${PLATFORM:-mlp1}"
+SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
+USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}"
+LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
-TARGET=/loong/loong_pangu
-BACKUP=/loong/loong_pangu.stock.umrk
-WRAPPER_TMP=/tmp/loong_pangu.umrk-wrapper.$$
+PANGU=/loong/loong_pangu
+PANGU_BACKUP=/loong/loong_pangu.stock.umrk
+STORAGE=/loong/loong_storage
+STORAGE_BACKUP=/loong/loong_storage.stock.umrk
+HOOK=/etc/init.d/S50leaf
+SESSION=/usr/bin/umrk-leaf-session
+HOOK_TMP=/tmp/S50leaf.umrk.$$
+SESSION_TMP=/tmp/umrk-leaf-session.$$
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
+UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
 
-log_msg() {{
+log_msg() {
     mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
-}}
+}
 
-fail() {{
+fail() {
     log_msg "$*"
     echo "$*" >&2
     exit 1
-}}
+}
+
+assert_adb_pinned() {
+    [ -x /usr/bin/adbd ] || fail "ADB support missing: /usr/bin/adbd"
+    [ -x /etc/init.d/S50usb-gadget.sh ] || fail "ADB support missing: /etc/init.d/S50usb-gadget.sh"
+    [ -f /etc/.usb_config ] || fail "ADB config missing: /etc/.usb_config"
+
+    cfg="$(cat /etc/.usb_config 2>/dev/null | tr -d '\\r\\n')"
+    [ "$cfg" = "usb_adb_en" ] || fail "ADB not pinned: /etc/.usb_config=$cfg"
+
+    attrs="$(lsattr /etc/.usb_config 2>/dev/null | awk '{print $1; exit}')"
+    case "$attrs" in
+        *i*) ;;
+        *) fail "ADB config is not immutable: $attrs" ;;
+    esac
+    log_msg "ADB pinned preflight passed"
+}
+
+is_old_umrk_pangu_wrapper() {
+    [ -f "$PANGU" ] && grep -q "UMRK_LAUNCHER_SWITCHER_WRAPPER=1" "$PANGU" 2>/dev/null
+}
+
+is_umrk_noop_storage() {
+    [ -f "$STORAGE" ] && grep -q "umrk-noop" "$STORAGE" 2>/dev/null
+}
+
+restore_old_pangu_wrapper() {
+    if ! is_old_umrk_pangu_wrapper; then
+        [ -x "$PANGU" ] || [ -f "$PANGU_BACKUP" ] || fail "stock pangu missing: $PANGU"
+        return 0
+    fi
+
+    [ -f "$PANGU_BACKUP" ] || fail "old pangu wrapper present but backup missing: $PANGU_BACKUP"
+    cp -p "$PANGU_BACKUP" "$PANGU" || fail "failed to restore stock pangu"
+    chmod 755 "$PANGU" 2>/dev/null || true
+    log_msg "restored stock pangu from legacy wrapper backup"
+}
+
+restore_old_storage_noop() {
+    if ! is_umrk_noop_storage; then
+        return 0
+    fi
+
+    [ -f "$STORAGE_BACKUP" ] || fail "old storage noop present but backup missing: $STORAGE_BACKUP"
+    cp -p "$STORAGE_BACKUP" "$STORAGE" || fail "failed to restore stock storage"
+    chmod 0775 "$STORAGE" 2>/dev/null || chmod 755 "$STORAGE" 2>/dev/null || true
+    if pidof loong_storage >/dev/null 2>&1; then
+        killall loong_storage 2>/dev/null || true
+        sleep 1
+    fi
+    log_msg "restored stock storage from legacy noop backup"
+}
 
 log_msg "launcher switcher installer starting"
+assert_adb_pinned
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
+restore_old_pangu_wrapper
+restore_old_storage_noop
 
-if [ ! -f "$BACKUP" ]; then
-    if [ ! -e "$TARGET" ]; then
-        fail "target missing: $TARGET"
-    fi
+cat > "$HOOK_TMP" <<'UMRK_LEAF_HOOK_EOF'
+__HOOK__
+UMRK_LEAF_HOOK_EOF
 
-    first_two="$(dd if="$TARGET" bs=2 count=1 2>/dev/null || true)"
-    if [ "$first_two" = "#!" ]; then
-        fail "target looks like a script and no stock backup exists; refusing to overwrite"
-    fi
+cat > "$SESSION_TMP" <<'UMRK_LEAF_SESSION_EOF'
+__SESSION__
+UMRK_LEAF_SESSION_EOF
 
-    cp -p "$TARGET" "$BACKUP" || fail "failed to create stock backup"
-    chmod 755 "$BACKUP" 2>/dev/null || true
-    log_msg "created backup: $BACKUP"
-else
-    log_msg "backup already exists: $BACKUP"
-fi
-
-if [ ! -s "$BACKUP" ]; then
-    fail "stock backup is empty or invalid"
-fi
-
-cat > "$WRAPPER_TMP" <<'UMRK_LAUNCHER_WRAPPER_EOF'
-{wrapper}
-UMRK_LAUNCHER_WRAPPER_EOF
-
-chmod 755 "$WRAPPER_TMP" || fail "failed to chmod wrapper"
-mv "$WRAPPER_TMP" "$TARGET" || fail "failed to install wrapper"
-chmod 755 "$TARGET" 2>/dev/null || true
-
-cat > "$UNINSTALL" <<'UMRK_LAUNCHER_UNINSTALL_EOF'
-{uninstaller}
+cat > "$UNINSTALL_TMP" <<'UMRK_LAUNCHER_UNINSTALL_EOF'
+__UNINSTALLER__
 UMRK_LAUNCHER_UNINSTALL_EOF
 
-chmod 755 "$UNINSTALL" 2>/dev/null || true
+chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" || fail "failed to chmod install files"
+mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
+mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
+mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
+chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" 2>/dev/null || true
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 sync
 
-log_msg "installed launcher switcher wrapper"
-echo "installed launcher switcher wrapper"
+log_msg "installed launcher switcher init hook"
+echo "installed launcher switcher init hook"
 """
+    return (
+        template
+        .replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+        .replace("__HOOK__", hook)
+        .replace("__SESSION__", session)
+        .replace("__UNINSTALLER__", uninstaller)
+    )
 
 
 def install_command() -> str:

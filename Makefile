@@ -17,7 +17,7 @@ SYSTEM_DIR := $(BUNDLE_ROOT)/.system/leaf
         clean
 
 help:
-	@echo "miniloong-launcher-switcher — MLP1 stock launcher swap mechanism."
+	@echo "miniloong-launcher-switcher — MLP1 Leaf init-hook mechanism."
 	@echo "Consumes an assembled launcher payload (BUNDLE_ROOT=$(BUNDLE_ROOT))."
 	@echo ""
 	@echo "  make sd-payload [BUNDLE_ROOT=<dir>]    generate the SD OTA install payload"
@@ -26,7 +26,7 @@ help:
 	@echo "  make adb-stage-sd-bundle-no-marker     stage without activating"
 	@echo "  make adb-enable-marker | adb-disable-marker"
 	@echo "  make adb-restart-loong | adb-tail-logs"
-	@echo "  make adb-install-wrapper | adb-uninstall-wrapper"
+	@echo "  make adb-install-wrapper | adb-uninstall-wrapper  compatibility aliases for init-hook install/remove"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
 

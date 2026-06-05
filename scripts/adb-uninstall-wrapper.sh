@@ -7,7 +7,7 @@ LEAF_SCRIPT="$WORKSPACE_DIR/Leaf/scripts/$(basename "$0")"
 
 if [ ! -x "$LEAF_SCRIPT" ]; then
     echo "Leaf deploy helper not found: $LEAF_SCRIPT" >&2
-    echo "Run this command from the Leaf repo: scripts/adb-uninstall-wrapper.sh" >&2
+    echo "Run this init-hook compatibility command from the Leaf repo: scripts/adb-uninstall-wrapper.sh" >&2
     exit 1
 fi
 

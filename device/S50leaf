@@ -1,0 +1,32 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          leaf
+# Required-Start:    mountvirtfs
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Leaf launcher session gate
+### END INIT INFO
+
+SESSION=/usr/bin/umrk-leaf-session
+
+case "${1:-start}" in
+    start|"")
+        [ -x "$SESSION" ] || exit 0
+        exec "$SESSION" start
+        ;;
+    stop)
+        [ -x "$SESSION" ] && "$SESSION" stop
+        exit 0
+        ;;
+    restart|reload)
+        "$0" stop
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}" >&2
+        exit 3
+        ;;
+esac
+
+exit 0

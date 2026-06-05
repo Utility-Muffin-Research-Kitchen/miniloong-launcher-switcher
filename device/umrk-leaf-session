@@ -1,0 +1,630 @@
+#!/bin/sh
+# UMRK Leaf init-session supervisor for Miniloong Pocket 1.
+#
+# This script is called by /etc/init.d/S50leaf before stock S50loong. Returning
+# 0 passes control back to rcS, so stock S50loong and later scripts continue.
+
+PLATFORM="${PLATFORM:-mlp1}"
+SD_MOUNT="${SDCARD_PATH:-/mnt/sdcard}"
+SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-/media/sdcard1}"
+TMPDIR="${TMPDIR:-/tmp}"
+RUNTIME_DIR="${UMRK_RUNTIME_PATH:-$TMPDIR/jawaka-runtime}"
+USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
+LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
+LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-leaf-session.log}"
+BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
+ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
+BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
+MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
+CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
+EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
+CRASH_WINDOW_SECONDS=120
+CRASH_THRESHOLD=3
+OWNED_POWER_PID="$TMPDIR/umrk-leaf-loong_power.pid"
+OWNED_LIGHT_PID="$TMPDIR/umrk-leaf-loong_light.pid"
+
+[ -f /etc/profile ] && . /etc/profile
+
+log_msg() {
+    log_dir="${LOG%/*}"
+    if [ "$log_dir" != "$LOG" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || true
+    fi
+    printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+now_seconds() {
+    date '+%s' 2>/dev/null || echo 0
+}
+
+mountpoint_is_mounted() {
+    awk -v mountpoint="$1" '$2 == mountpoint { found = 1; exit } END { exit found ? 0 : 1 }' /proc/mounts 2>/dev/null
+}
+
+launcher_candidate_ready() {
+    root="$1"
+    [ -n "$root" ] || return 1
+    [ -e "$root/.system/leaf/enabled" ] || return 1
+    [ -f "$root/.system/leaf/launcher/bin/loong_pangu" ] || return 1
+    return 0
+}
+
+load_env_file() {
+    ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
+    [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+}
+
+refresh_paths() {
+    SD_MOUNT="${SDCARD_PATH:-$SD_MOUNT}"
+    SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
+    BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
+    BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
+    PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
+    RUNTIME_DIR="${UMRK_RUNTIME_PATH:-$TMPDIR/jawaka-runtime}"
+    USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
+    LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
+    LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-leaf-session.log}"
+    INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
+    MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+    CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
+    CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
+    EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
+}
+
+set_active_launcher_sd() {
+    active="$1"
+    alternate="$2"
+
+    export SDCARD_PATH="$active"
+    export SYSTEM_PATH="$active/.system/leaf/platforms/$PLATFORM"
+    export UMRK_PLATFORM_PATH="$SYSTEM_PATH"
+    export UMRK_LAUNCHER_PATH="$active/.system/leaf/launcher"
+    export UMRK_BIN_PATH="$UMRK_LAUNCHER_PATH/bin"
+    export USERDATA_PATH="$active/.system/leaf/userdata/$PLATFORM"
+    export SHARED_USERDATA_PATH="$active/.system/leaf/userdata/shared"
+    export LOGS_PATH="$USERDATA_PATH/logs"
+    export UMRK_INTERNAL_DATA_PATH="$active/.system/leaf/state"
+    export UMRK_MARKER_PATH="$active/.system/leaf/enabled"
+
+    if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
+       mountpoint_is_mounted "$alternate"; then
+        export UMRK_SECONDARY_SDCARD_PATH="$alternate"
+        export SDCARD_PATHS="$active:$alternate"
+        export ROMS_PATHS="$active/Roms:$alternate/Roms"
+        export IMAGES_PATHS="$active/Images:$alternate/Images"
+        export APPS_PATHS="$active/Apps:$alternate/Apps"
+        export BIOS_PATHS="$active/BIOS:$alternate/BIOS"
+        export SAVES_PATHS="$active/Saves:$alternate/Saves"
+        export STATES_PATHS="$active/States:$alternate/States"
+        export CHEATS_PATHS="$active/Cheats:$alternate/Cheats"
+    else
+        export UMRK_SECONDARY_SDCARD_PATH="$SECONDARY_SD_MOUNT"
+        export SDCARD_PATHS="$active"
+        export ROMS_PATHS="$active/Roms"
+        export IMAGES_PATHS="$active/Images"
+        export APPS_PATHS="$active/Apps"
+        export BIOS_PATHS="$active/BIOS"
+        export SAVES_PATHS="$active/Saves"
+        export STATES_PATHS="$active/States"
+        export CHEATS_PATHS="$active/Cheats"
+    fi
+
+    refresh_paths
+    load_env_file
+    refresh_paths
+}
+
+recover_launcher_sd_mount() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    launcher_candidate_ready "$SD_MOUNT" && return 0
+
+    candidate="$SECONDARY_SD_MOUNT"
+    [ -n "$candidate" ] || return 0
+    [ "$candidate" != "$SD_MOUNT" ] || return 0
+    mountpoint_is_mounted "$candidate" || return 0
+    launcher_candidate_ready "$candidate" || return 0
+
+    old_sd="$SD_MOUNT"
+    log_msg "launcher marker/bundle not ready on $old_sd; found active launcher SD at $candidate"
+    set_active_launcher_sd "$candidate" "$old_sd"
+    log_msg "recovered active launcher SD: $SD_MOUNT (alternate content SD: ${UMRK_SECONDARY_SDCARD_PATH:-none})"
+}
+
+loong_upgrade_looks_valid() {
+    path="$1"
+    [ -s "$path" ] || return 1
+    grep -q '"otaCommand"' "$path" 2>/dev/null || return 1
+    grep -q '"otaFile"' "$path" 2>/dev/null || return 1
+    return 0
+}
+
+stock_ota_present() {
+    for root in /mnt/sdcard "$SECONDARY_SD_MOUNT"; do
+        [ -n "$root" ] || continue
+        loong_upgrade_looks_valid "$root/loong_upgrade" && return 0
+    done
+    return 1
+}
+
+adb_is_pinned() {
+    [ -x /usr/bin/adbd ] || return 1
+    [ -x /etc/init.d/S50usb-gadget.sh ] || return 1
+    [ -f /etc/.usb_config ] || return 1
+    cfg="$(cat /etc/.usb_config 2>/dev/null | tr -d '\r\n')"
+    [ "$cfg" = "usb_adb_en" ] || return 1
+    attrs="$(lsattr /etc/.usb_config 2>/dev/null | awk '{print $1; exit}')"
+    case "$attrs" in
+        *i*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+option_list_has() {
+    case ",$1," in
+        *",$2,"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+sd_mount_options() {
+    awk -v mountpoint="$SD_MOUNT" '$2 == mountpoint { print $4; exit }' /proc/mounts 2>/dev/null
+}
+
+sd_options_for_mode() {
+    mode="$1"
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] || return 1
+
+    out=""
+    old_ifs="$IFS"
+    IFS=,
+    set -- $opts
+    IFS="$old_ifs"
+
+    for opt in "$@"; do
+        case "$opt" in
+            exec|noexec) opt="$mode" ;;
+            suid|nosuid) opt=nosuid ;;
+            '') continue ;;
+        esac
+        option_list_has "$out" "$opt" || out="${out:+$out,}$opt"
+    done
+
+    option_list_has "$out" "$mode" || out="${out:+$out,}$mode"
+    option_list_has "$out" nosuid || out="${out:+$out,}nosuid"
+    printf '%s\n' "$out"
+}
+
+sd_is_noexec() {
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] && option_list_has "$opts" noexec
+}
+
+sd_is_exec() {
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] && ! option_list_has "$opts" noexec
+}
+
+remount_sd_mode() {
+    mode="$1"
+    opts="$(sd_options_for_mode "$mode")" || {
+        log_msg "could not read $SD_MOUNT mount options"
+        return 1
+    }
+
+    log_msg "remounting $SD_MOUNT with options: $opts"
+    if ! mount -o "remount,$opts" "$SD_MOUNT" 2>>"$LOG"; then
+        log_msg "failed to remount $SD_MOUNT with options: $opts"
+        return 1
+    fi
+
+    if [ "$mode" = exec ] && ! sd_is_exec; then
+        log_msg "$SD_MOUNT still mounted noexec after exec remount"
+        return 1
+    fi
+    if [ "$mode" = noexec ] && ! sd_is_noexec; then
+        log_msg "$SD_MOUNT still mounted exec after noexec remount"
+        return 1
+    fi
+    return 0
+}
+
+restore_sd_noexec() {
+    opts="$(sd_mount_options)"
+    [ -n "$opts" ] || return 0
+    option_list_has "$opts" noexec && return 0
+    remount_sd_mode noexec || log_msg "best-effort noexec restore failed"
+}
+
+remount_secondary_sd_exec() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    mountpoint_is_mounted "$SECONDARY_SD_MOUNT" || return 0
+    log_msg "best-effort remounting $SECONDARY_SD_MOUNT exec"
+    mount -o remount,rw,exec,nosuid,nodev "$SECONDARY_SD_MOUNT" 2>>"$LOG" ||
+        log_msg "best-effort exec remount failed for $SECONDARY_SD_MOUNT"
+}
+
+disable_marker() {
+    reason="$1"
+    stamp="$(now_seconds)"
+    disabled="${MARKER}.disabled.${stamp}"
+    if [ -e "$MARKER" ] && mv "$MARKER" "$disabled" 2>/dev/null; then
+        log_msg "$reason: disabled marker: $disabled"
+    else
+        rm -f "$MARKER" 2>/dev/null || true
+        log_msg "$reason: removed marker"
+    fi
+    rm -f "$CRASH_STATE" 2>/dev/null || true
+}
+
+check_crash_loop() {
+    if [ -f "$CLEAN_EXIT_SENTINEL" ]; then
+        rm -f "$CLEAN_EXIT_SENTINEL"
+        rm -f "$CRASH_STATE" 2>/dev/null || true
+        log_msg "clean exit detected; crash counter reset"
+        return 0
+    fi
+
+    now="$(now_seconds)"
+    if [ "$now" -le 0 ] 2>/dev/null; then
+        log_msg "crash-loop guard skipped: date seconds unavailable"
+        return 0
+    fi
+
+    first="$now"
+    count=0
+    if [ -f "$CRASH_STATE" ]; then
+        read first count <"$CRASH_STATE" 2>/dev/null || {
+            first="$now"
+            count=0
+        }
+    fi
+
+    case "$first" in *[!0-9]*|'') first="$now" ;; esac
+    case "$count" in *[!0-9]*|'') count=0 ;; esac
+
+    age=$((now - first))
+    if [ "$age" -lt 0 ] || [ "$age" -gt "$CRASH_WINDOW_SECONDS" ]; then
+        first="$now"
+        count=1
+    else
+        count=$((count + 1))
+    fi
+
+    mkdir -p "$USERDATA_DIR" 2>/dev/null || true
+    printf '%s %s\n' "$first" "$count" >"$CRASH_STATE" 2>/dev/null || true
+
+    if [ "$count" -ge "$CRASH_THRESHOLD" ]; then
+        log_msg "crash-loop guard tripped count=$count window=${CRASH_WINDOW_SECONDS}s"
+        disable_marker "crash-loop guard"
+        return 1
+    fi
+    return 0
+}
+
+preflight_jawaka_bundle() {
+    for bin in "$BUNDLE_BIN" "$BUNDLE/bin/jawaka-launcher" "$BUNDLE/bin/jawaka-menu"; do
+        if [ ! -f "$bin" ]; then
+            log_msg "marker present but launcher executable missing: $bin"
+            return 1
+        fi
+        if [ ! -x "$bin" ]; then
+            log_msg "marker present but launcher executable is not executable: $bin"
+            return 1
+        fi
+    done
+
+    [ -f "$BUNDLE/res/font.ttf" ] || {
+        log_msg "marker present but launcher font missing: $BUNDLE/res/font.ttf"
+        return 1
+    }
+    [ -d "$BUNDLE/res/themes" ] || {
+        log_msg "marker present but launcher themes missing: $BUNDLE/res/themes"
+        return 1
+    }
+    [ -d "$BUNDLE/res/assets" ] || {
+        log_msg "marker present but launcher status assets missing: $BUNDLE/res/assets"
+        return 1
+    }
+
+    mkdir -p "$RUNTIME_DIR" "$USERDATA_DIR" "$LOG_DIR" "$INTERNAL_DATA" 2>/dev/null || {
+        log_msg "failed to create runtime directories"
+        return 1
+    }
+    return 0
+}
+
+wait_for_adbd() {
+    i=0
+    while [ "$i" -lt 20 ]; do
+        pidof adbd >/dev/null 2>&1 && return 0
+        sleep .25
+        i=$((i + 1))
+    done
+    return 1
+}
+
+start_usb_adb() {
+    log_msg "starting usb gadget"
+    /etc/init.d/S50usb-gadget.sh start >>"$LOG" 2>&1 || {
+        log_msg "S50usb-gadget.sh start failed"
+        return 1
+    }
+    wait_for_adbd || {
+        log_msg "adbd did not appear after usb gadget start"
+        return 1
+    }
+    return 0
+}
+
+start_pulseaudio_if_needed() {
+    pidof pulseaudio >/dev/null 2>&1 && return 0
+    if [ -x /usr/bin/pulseaudio ]; then
+        log_msg "starting pulseaudio"
+        umask 077
+        PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio >>"$LOG" 2>&1 &
+    else
+        log_msg "pulseaudio missing"
+    fi
+}
+
+start_owned_loong() {
+    name="$1"
+    cfg="$2"
+    pidfile="$3"
+
+    pidof "$name" >/dev/null 2>&1 && {
+        log_msg "$name already running; not leaf-owned"
+        return 0
+    }
+    [ -x "/loong/$name" ] || {
+        log_msg "/loong/$name missing or not executable"
+        return 1
+    }
+
+    log_msg "starting leaf-owned $name"
+    (
+        cd /loong 2>/dev/null || exit 127
+        export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
+        if [ -n "$cfg" ]; then
+            "./$name" "$cfg"
+        else
+            "./$name"
+        fi
+    ) >>"$LOG" 2>&1 &
+    echo "$!" >"$pidfile" 2>/dev/null || true
+    return 0
+}
+
+stop_owned_process() {
+    name="$1"
+    pidfile="$2"
+    [ -f "$pidfile" ] || return 0
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    rm -f "$pidfile" 2>/dev/null || true
+    case "$pid" in *[!0-9]*|'') return 0 ;; esac
+    [ -d "/proc/$pid" ] || return 0
+    comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
+    [ "$comm" = "$name" ] || return 0
+    log_msg "stopping leaf-owned $name pid=$pid"
+    kill "$pid" 2>/dev/null || true
+    sleep .3
+    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+}
+
+stop_remaining_processes_by_name() {
+    name="$1"
+    pids="$(pidof "$name" 2>/dev/null || true)"
+    [ -n "$pids" ] || return 0
+    log_msg "stopping remaining $name pids=$pids"
+    kill $pids 2>/dev/null || true
+    sleep .3
+    pids="$(pidof "$name" 2>/dev/null || true)"
+    [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+}
+
+stop_leaf_owned_loong() {
+    stop_owned_process loong_light "$OWNED_LIGHT_PID"
+    stop_remaining_processes_by_name loong_light
+    stop_owned_process loong_power "$OWNED_POWER_PID"
+    stop_remaining_processes_by_name loong_power
+}
+
+kill_stale_custom_launcher() {
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
+        pids="$(pidof "$name" 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "stopping stale $name pids=$pids"
+            kill $pids 2>/dev/null || true
+        fi
+    done
+
+    if command -v pgrep >/dev/null 2>&1; then
+        pids="$(pgrep -f jawaka-retroarch-runner 2>/dev/null || true)"
+        [ -n "$pids" ] && {
+            log_msg "stopping stale jawaka-retroarch-runner pids=$pids"
+            kill $pids 2>/dev/null || true
+        }
+    fi
+
+    sleep 1
+
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
+        pids="$(pidof "$name" 2>/dev/null || true)"
+        if [ -n "$pids" ]; then
+            log_msg "force stopping stale $name pids=$pids"
+            kill -9 $pids 2>/dev/null || true
+        fi
+    done
+}
+
+export_leaf_env() {
+    export PLATFORM="${PLATFORM:-mlp1}"
+    export DEVICE="${DEVICE:-$PLATFORM}"
+    export SDCARD_PATH="${SDCARD_PATH:-$SD_MOUNT}"
+    export SYSTEM_PATH="${SYSTEM_PATH:-$PLATFORM_ROOT}"
+    export UMRK_PLATFORM_PATH="${UMRK_PLATFORM_PATH:-$PLATFORM_ROOT}"
+    export UMRK_LAUNCHER_PATH="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
+    export UMRK_BIN_PATH="${UMRK_BIN_PATH:-$BUNDLE/bin}"
+    export UMRK_RUNTIME_PATH="${UMRK_RUNTIME_PATH:-$RUNTIME_DIR}"
+    export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
+    export UMRK_LEAF_MODE="${UMRK_LEAF_MODE:-1}"
+    export USERDATA_PATH="${USERDATA_PATH:-$USERDATA_DIR}"
+    export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/shared}"
+    export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
+    export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
+    export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
+    export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
+    export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
+    export BIOS_PATH="${BIOS_PATH:-$SD_MOUNT/BIOS}"
+    export SAVES_PATH="${SAVES_PATH:-$SD_MOUNT/Saves}"
+    export STATES_PATH="${STATES_PATH:-$SD_MOUNT/States}"
+    export CHEATS_PATH="${CHEATS_PATH:-$SD_MOUNT/Cheats}"
+    export CORES_PATH="${CORES_PATH:-$PLATFORM_ROOT/cores}"
+    export INFO_PATH="${INFO_PATH:-$PLATFORM_ROOT/info}"
+    export UMRK_SECONDARY_SDCARD_PATH="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
+
+    if [ "$PLATFORM" = "mlp1" ]; then
+        export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH}"
+        export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms}"
+        export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images}"
+        export APPS_PATHS="${APPS_PATHS:-$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps}"
+        export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS}"
+        export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves}"
+        export STATES_PATHS="${STATES_PATHS:-$STATES_PATH:$UMRK_SECONDARY_SDCARD_PATH/States}"
+        export CHEATS_PATHS="${CHEATS_PATHS:-$CHEATS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Cheats}"
+    else
+        export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH}"
+        export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH}"
+        export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH}"
+        export APPS_PATHS="${APPS_PATHS:-$APPS_PATH}"
+        export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH}"
+        export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH}"
+        export STATES_PATHS="${STATES_PATHS:-$STATES_PATH}"
+        export CHEATS_PATHS="${CHEATS_PATHS:-$CHEATS_PATH}"
+    fi
+
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
+    export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+    export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="${SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS:-1}"
+    export CAT_WINDOW_WIDTH="${CAT_WINDOW_WIDTH:-960}"
+    export CAT_WINDOW_HEIGHT="${CAT_WINDOW_HEIGHT:-720}"
+    export CAT_THEMES_DIR="${CAT_THEMES_DIR:-$BUNDLE/res/themes}"
+    export CAT_FONTS_DIR="${CAT_FONTS_DIR:-$BUNDLE/res}"
+    export CAT_STATUS_ASSETS_DIR="${CAT_STATUS_ASSETS_DIR:-$BUNDLE/res/assets}"
+    export JAWAKA_RUNTIME_DIR="${JAWAKA_RUNTIME_DIR:-$RUNTIME_DIR}"
+    export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-$SD_MOUNT}"
+    export JAWAKA_RETROARCH_BIN="${JAWAKA_RETROARCH_BIN:-$UMRK_RETROARCH_BIN}"
+    export JAWAKA_RETROARCH_CORES_DIR="${JAWAKA_RETROARCH_CORES_DIR:-$CORES_PATH}"
+    export JAWAKA_THEME="${JAWAKA_THEME:-Jawaka-Tabs}"
+    [ -d "$BUNDLE/lib" ] && export LD_LIBRARY_PATH="$BUNDLE/lib:${LD_LIBRARY_PATH:-}"
+}
+
+run_platform_hooks() {
+    [ -d "$PLATFORM_ROOT/platform.d" ] || return 0
+    for script in "$PLATFORM_ROOT/platform.d"/*.sh; do
+        [ -f "$script" ] && [ -x "$script" ] || continue
+        log_msg "running platform script: $script"
+        "$script" >>"$LOG" 2>&1 || log_msg "platform script failed: $script"
+    done
+}
+
+pass_to_stock() {
+    reason="$1"
+    log_msg "$reason; passing boot to stock S50loong"
+    kill_stale_custom_launcher
+    stop_leaf_owned_loong
+    restore_sd_noexec
+    return 0
+}
+
+leaf_stop() {
+    log_msg "leaf stop requested"
+    kill_stale_custom_launcher
+    stop_leaf_owned_loong
+    exit 0
+}
+
+leaf_start() {
+    load_env_file
+    refresh_paths
+    recover_launcher_sd_mount
+
+    if [ ! -e "$MARKER" ]; then
+        log_msg "marker absent"
+        pass_to_stock "Leaf marker absent"
+        return 0
+    fi
+
+    if stock_ota_present; then
+        pass_to_stock "stock loong_upgrade present"
+        return 0
+    fi
+
+    if ! adb_is_pinned; then
+        pass_to_stock "ADB is not pinned; refusing Leaf mode"
+        return 0
+    fi
+
+    if ! start_usb_adb; then
+        pass_to_stock "ADB startup verification failed"
+        return 0
+    fi
+
+    if ! remount_sd_mode exec || ! sd_is_exec; then
+        disable_marker "SD exec remount failure"
+        pass_to_stock "SD exec remount failed"
+        return 0
+    fi
+    remount_secondary_sd_exec
+
+    if ! preflight_jawaka_bundle; then
+        pass_to_stock "Jawaka bundle preflight failed"
+        return 0
+    fi
+
+    export_leaf_env
+    start_pulseaudio_if_needed
+    start_owned_loong loong_power /oem/loong/record/config/loong_power.cfg "$OWNED_POWER_PID"
+    # loong_light reads its stock config itself; passing the cfg path makes it exit.
+    start_owned_loong loong_light "" "$OWNED_LIGHT_PID"
+    run_platform_hooks
+    kill_stale_custom_launcher
+
+    cd "$BUNDLE" 2>/dev/null || {
+        pass_to_stock "could not cd to launcher bundle: $BUNDLE"
+        return 0
+    }
+
+    while true; do
+        if ! check_crash_loop; then
+            pass_to_stock "crash-loop guard disabled Leaf marker"
+            return 0
+        fi
+
+        log_msg "starting Leaf launcher: $BUNDLE_BIN"
+        "$BUNDLE_BIN" >>"$LOG" 2>&1
+        status=$?
+        log_msg "Leaf launcher exited status=$status"
+
+        if [ -f "$EXIT_TO_STOCK_SENTINEL" ]; then
+            rm -f "$EXIT_TO_STOCK_SENTINEL"
+            pass_to_stock "exit-to-stock requested"
+            return 0
+        fi
+
+        sleep 1
+    done
+}
+
+case "${1:-start}" in
+    start|"") leaf_start; exit 0 ;;
+    stop) leaf_stop ;;
+    *)
+        echo "Usage: $0 {start|stop}" >&2
+        exit 3
+        ;;
+esac

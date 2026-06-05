@@ -4,7 +4,7 @@ Standalone launcher replacement installer for the Miniloong Pocket 1.
 
 This project is intentionally separate from `miniloong-adb-keeper`. It reuses
 the known `loong_upgrade` SD update mechanism, and owns the payload generator,
-installer, wrapper, device defaults, and recovery payloads.
+installer, init hook, device defaults, and recovery payloads.
 
 It does **not** build the launcher itself. The launcher payload (Jawaka binaries
 plus Catastrophe/RetroArch/cores assets) is assembled and staged by the sibling
@@ -12,44 +12,39 @@ plus Catastrophe/RetroArch/cores assets) is assembled and staged by the sibling
 
 ## Contract
 
-The switcher replaces only the visible GUI entrypoint:
+The switcher installs one early init hook and one session supervisor:
 
 ```text
-/loong/loong_pangu
+/etc/init.d/S50leaf
+/usr/bin/umrk-leaf-session
 ```
 
-The installer saves the stock binary as:
+It does not replace `/loong/loong_pangu` or `/loong/loong_storage`. New
+installs require ADB to be pinned first by `miniloong-adb-keeper`; the installer
+refuses unless `/etc/.usb_config` is `usb_adb_en` and immutable.
 
-```text
-/loong/loong_pangu.stock.umrk
-```
-
-At boot, the wrapper checks:
-
-```text
-UMRK_MARKER_PATH
-UMRK_BIN_PATH/loong_pangu
-```
-
-If both exist, it remounts the SD card as executable and execs:
+At boot, `S50leaf` runs before stock `S50loong`. If the Leaf marker and bundle
+are ready, the hook blocks `rcS`, starts only the minimal Leaf-owned runtime,
+and runs:
 
 ```text
 UMRK_BIN_PATH/loong_pangu
 ```
 
-On MLP1, if `/mnt/sdcard` is mounted but does not contain the marker/bundle
-and `/media/sdcard1` does, the wrapper treats `/media/sdcard1` as the active
-launcher SD for that session and continues through the same Jawaka startup
-path. This recovers from two-card boots where StockOS assigns the UMRK card to
-the secondary mount.
+If the marker is absent, a stock `loong_upgrade` payload is present, ADB is not
+pinned, the SD cannot be remounted `exec`, or the bundle is incomplete, the hook
+exits `0` so stock boot continues into `S50loong`.
 
-When the marker is present, the wrapper first remounts `SDCARD_PATH` with
-`exec` while preserving the stock mount options. When the marker is absent or
-the wrapper falls back to stock, it best-effort restores the StockOS `noexec`
-SD mount. If the marker is absent, the SD card is absent, remounting fails, or
-the bundle is incomplete, it starts the stock GUI. The wrapper starts the stock
-backup through a temporary `loong_pangu` symlink so the process still looks like
-the normal stock GUI to stock supervision code.
+On MLP1, if `/mnt/sdcard` does not contain the marker/bundle and
+`/media/sdcard1` does, the session treats `/media/sdcard1` as the active Leaf
+SD for that boot. This recovers from two-card boots where StockOS assigns the
+UMRK card to the secondary mount.
+
+Leaf mode deliberately skips stock `loong_daemon`, `loong_storage`,
+`loong_service`, `loong_input`, and stock `loong_pangu`. It starts ADB/USB,
+PulseAudio, `loong_power`, and `loong_light`, then Jawaka. Jawaka's
+`Exit to Stock` menu item writes a tmpfs sentinel; the session cleans up
+Leaf-owned processes and exits, allowing the same boot to continue into stock.
 
 ## Build the SD payload
 
@@ -101,7 +96,20 @@ this update path.
 ADB deploy/control helpers live in `Leaf`. The compatibility targets in this
 repo delegate there when a sibling `Leaf` checkout is available.
 
-Install the wrapper over ADB:
+First apply `miniloong-adb-keeper` and verify ADB is pinned:
+
+```sh
+adb shell 'cat /etc/.usb_config; lsattr /etc/.usb_config'
+```
+
+Expected:
+
+```text
+usb_adb_en
+----i...
+```
+
+Install the init hook over ADB:
 
 ```sh
 make adb-install-wrapper
@@ -112,7 +120,7 @@ Stage the launcher bundle on the active Leaf SD card and enable the marker
 
 ```sh
 make adb-stage-sd-bundle BUNDLE_ROOT=../build/stage/mlp1/package
-adb shell '/etc/init.d/S50loong restart'
+adb reboot
 ```
 
 ADB staging defaults `REMOTE_SDCARD_PATH` to `auto`. It resolves the mounted
@@ -129,21 +137,21 @@ Stage the launcher bundle without activating it:
 make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=../build/stage/mlp1/package
 ```
 
-Toggle activation and restart the stock Loong stack:
+Toggle activation and reboot to exercise the init hook:
 
 ```sh
 make adb-enable-marker
-make adb-restart-loong
+adb reboot
 
 make adb-disable-marker
-make adb-restart-loong
+adb reboot
 ```
 
 Test stock fallback by removing the marker:
 
 ```sh
 scripts/adb-stage-sd-bundle.sh --no-marker
-adb shell '/etc/init.d/S50loong restart'
+adb reboot
 ```
 
 Tail switcher logs:
@@ -158,11 +166,11 @@ To stage directly from Leaf (assemble + push + activate in one step):
 make -C ../Leaf stage-jawaka DEVICE=mlp1
 ```
 
-The installed switcher wrapper has crash-loop protection. If the marker is
-present and the custom launcher path is entered repeatedly within a short
-window, it disables the marker and starts stock. Remount failure also disables
-the marker immediately, because the direct-SD Jawaka path cannot run safely
-while the SD-card mount is `noexec`. Runtime `SDCARD_PATH` still defaults to
+The installed init hook has crash-loop protection. If the marker is present and
+the custom launcher path is entered repeatedly within a short window, it
+disables the marker and passes boot to stock. Remount failure also disables the
+marker immediately, because the direct-SD Jawaka path cannot run safely while
+the SD-card mount is `noexec`. Runtime `SDCARD_PATH` still defaults to
 `/mnt/sdcard`; deploy-time `REMOTE_SDCARD_PATH` defaults to auto-resolution.
 
 ## SD Install
@@ -177,9 +185,10 @@ diskutil eject "/Volumes/SDCARD_NAME"
 
 Boot the MLP1 with the SD inserted. The device will enter the stock update
 screen while the installer runs. The installer renames `loong_upgrade` to
-`loong_upgrade.used`, writes logs, installs the wrapper, then returns to the
-stock update command path, which intentionally sleeps forever to avoid a full
-upgrade attempt. Power off after install, then boot normally.
+`loong_upgrade.used`, verifies pinned ADB, restores any legacy UMRK
+`loong_pangu`/`loong_storage` wrappers, installs the init hook/session, then
+returns to the stock update command path, which intentionally sleeps forever to
+avoid a full upgrade attempt. Power off after install, then boot normally.
 
 Logs:
 
@@ -187,7 +196,7 @@ Logs:
 LOGS_PATH/umrk-launcher-install-command.log
 LOGS_PATH/umrk-launcher-install.log
 LOGS_PATH/umrk-launcher-uninstall.log
-LOGS_PATH/umrk-launcher.log
+LOGS_PATH/umrk-leaf-session.log
 ```
 
 ## Recovery
@@ -196,7 +205,7 @@ Over ADB:
 
 ```sh
 make adb-uninstall-wrapper
-adb shell '/etc/init.d/S50loong restart'
+adb reboot
 ```
 
 Or directly:
@@ -205,7 +214,8 @@ Or directly:
 adb shell '/usr/bin/umrk-launcher-switcher-uninstall.sh'
 ```
 
-The uninstall script restores `/loong/loong_pangu` from
-`/loong/loong_pangu.stock.umrk`. If UMRK replaced `/loong/loong_storage`
-with the no-op sleeper, uninstall also restores it from
-`/loong/loong_storage.stock.umrk`.
+The uninstall script removes `/etc/init.d/S50leaf` and
+`/usr/bin/umrk-leaf-session`. New hook installs leave stock Loong binaries
+untouched. If an older UMRK install replaced `/loong/loong_pangu` or
+`/loong/loong_storage`, uninstall restores them from their `.stock.umrk`
+backups.
