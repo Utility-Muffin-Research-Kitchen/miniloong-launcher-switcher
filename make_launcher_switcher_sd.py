@@ -12,7 +12,16 @@ DEFAULT_VER_INNER = 2147483647
 DEFAULT_OTA_FILE = "launcher_probe.bin"
 DEFAULT_PROBE_CONTENT = b"miniloong launcher switcher probe\n"
 INSTALLER_NAME = "umrk-launcher-install.sh"
+RECOVERY_NAME = "umrk-launcher-recovery.sh"
 MLP1_SDCARD_PATH = "/mnt/sdcard"
+COMPLETION_SLEEP = "while true; do sleep 3600; done"
+COMPLETION_REBOOT = (
+    "reboot -f 2>/dev/null || "
+    "busybox reboot -f 2>/dev/null || "
+    "/sbin/reboot -f 2>/dev/null || "
+    "reboot 2>/dev/null || "
+    "while true; do sleep 3600; done"
+)
 
 ROOT_DIR = Path(__file__).resolve().parent
 HOOK_PATH = ROOT_DIR / "device" / "S50leaf"
@@ -114,15 +123,40 @@ def shell_single_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
+def completion_command(action: str) -> str:
+    if action == "sleep":
+        return COMPLETION_SLEEP
+    if action == "reboot":
+        return COMPLETION_REBOOT
+    raise SystemExit(f"unsupported completion action: {action}")
+
+
 def read_required(path: Path) -> str:
     if not path.is_file():
         raise SystemExit(f"missing required file: {path}")
     return path.read_text(encoding="utf-8")
 
-def build_installer_script() -> str:
+
+def validate_release_id(value: str) -> None:
+    if not value or value in {".", ".."}:
+        raise SystemExit(f"unsafe --release-id value: {value!r}")
+    if "/" in value or "\\" in value:
+        raise SystemExit("--release-id must be a simple directory name, not a path")
+    if any(ch.isspace() for ch in value):
+        raise SystemExit("--release-id must not contain whitespace")
+    if any(ch in ':*?"<>|' or ord(ch) < 32 for ch in value):
+        raise SystemExit("--release-id contains characters unsafe for FAT32")
+
+
+def build_installer_script(require_adb_pinned: bool = True) -> str:
     hook = read_required(HOOK_PATH).rstrip()
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
+    adb_preflight = (
+        "assert_adb_pinned"
+        if require_adb_pinned
+        else 'log_msg "ADB pinned preflight skipped"'
+    )
     template = """#!/bin/sh
 set -u
 
@@ -206,7 +240,7 @@ restore_old_storage_noop() {
 }
 
 log_msg "launcher switcher installer starting"
-assert_adb_pinned
+__ADB_PREFLIGHT__
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
 restore_old_pangu_wrapper
 restore_old_storage_noop
@@ -237,13 +271,240 @@ echo "installed launcher switcher init hook"
     return (
         template
         .replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+        .replace("__ADB_PREFLIGHT__", adb_preflight)
         .replace("__HOOK__", hook)
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
     )
 
 
-def install_command() -> str:
+def build_managed_installer_script(release_id: str) -> str:
+    validate_release_id(release_id)
+    hook = read_required(HOOK_PATH).rstrip()
+    session = read_required(SESSION_PATH).rstrip()
+    uninstaller = read_required(UNINSTALLER_PATH).rstrip()
+    template = """#!/bin/sh
+set -u
+
+PLATFORM="${PLATFORM:-mlp1}"
+SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
+RELEASE_ID="__RELEASE_ID__"
+SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
+RELEASE_ROOT="$SYSTEM_ROOT/releases/$RELEASE_ID"
+RELEASE_LAUNCHER="$RELEASE_ROOT/launcher"
+RELEASE_PLATFORM="$RELEASE_ROOT/platforms/$PLATFORM"
+RELEASE_APPS="$RELEASE_ROOT/Apps"
+MANAGED_APPS="$RELEASE_ROOT/managed-apps.txt"
+ACTIVE_LAUNCHER="$SYSTEM_ROOT/launcher"
+ACTIVE_PLATFORM="$SYSTEM_ROOT/platforms/$PLATFORM"
+APPS_ROOT="$SDCARD_PATH/Apps"
+USERDATA_PATH="${USERDATA_PATH:-$SYSTEM_ROOT/userdata/$PLATFORM}"
+LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SYSTEM_ROOT/state}"
+MARKER="${UMRK_MARKER_PATH:-$SYSTEM_ROOT/enabled}"
+LOG="$LOGS_PATH/umrk-launcher-install.log"
+PANGU=/loong/loong_pangu
+PANGU_BACKUP=/loong/loong_pangu.stock.umrk
+STORAGE=/loong/loong_storage
+STORAGE_BACKUP=/loong/loong_storage.stock.umrk
+HOOK=/etc/init.d/S50leaf
+SESSION=/usr/bin/umrk-leaf-session
+HOOK_TMP=/tmp/S50leaf.umrk.$$
+SESSION_TMP=/tmp/umrk-leaf-session.$$
+UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
+UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
+
+log_msg() {
+    mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
+    printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+fail() {
+    log_msg "$*"
+    echo "$*" >&2
+    exit 1
+}
+
+is_old_umrk_pangu_wrapper() {
+    [ -f "$PANGU" ] && grep -q "UMRK_LAUNCHER_SWITCHER_WRAPPER=1" "$PANGU" 2>/dev/null
+}
+
+is_umrk_noop_storage() {
+    [ -f "$STORAGE" ] && grep -q "umrk-noop" "$STORAGE" 2>/dev/null
+}
+
+restore_old_pangu_wrapper() {
+    if ! is_old_umrk_pangu_wrapper; then
+        [ -x "$PANGU" ] || [ -f "$PANGU_BACKUP" ] || fail "stock pangu missing: $PANGU"
+        return 0
+    fi
+
+    [ -f "$PANGU_BACKUP" ] || fail "old pangu wrapper present but backup missing: $PANGU_BACKUP"
+    cp -p "$PANGU_BACKUP" "$PANGU" || fail "failed to restore stock pangu"
+    chmod 755 "$PANGU" 2>/dev/null || true
+    log_msg "restored stock pangu from legacy wrapper backup"
+}
+
+restore_old_storage_noop() {
+    if ! is_umrk_noop_storage; then
+        return 0
+    fi
+
+    [ -f "$STORAGE_BACKUP" ] || fail "old storage noop present but backup missing: $STORAGE_BACKUP"
+    cp -p "$STORAGE_BACKUP" "$STORAGE" || fail "failed to restore stock storage"
+    chmod 0775 "$STORAGE" 2>/dev/null || chmod 755 "$STORAGE" 2>/dev/null || true
+    if pidof loong_storage >/dev/null 2>&1; then
+        killall loong_storage 2>/dev/null || true
+        sleep 1
+    fi
+    log_msg "restored stock storage from legacy noop backup"
+}
+
+validate_release() {
+    [ -d "$RELEASE_ROOT" ] || fail "missing release root: $RELEASE_ROOT"
+    for bin in \
+        "$RELEASE_LAUNCHER/bin/loong_pangu" \
+        "$RELEASE_LAUNCHER/bin/jawaka-launcher" \
+        "$RELEASE_LAUNCHER/bin/jawaka-menu"; do
+        [ -f "$bin" ] || fail "missing release launcher binary: $bin"
+    done
+    [ -f "$RELEASE_LAUNCHER/res/font.ttf" ] || fail "missing release font"
+    [ -d "$RELEASE_LAUNCHER/res/themes" ] || fail "missing release themes"
+    [ -d "$RELEASE_LAUNCHER/res/assets" ] || fail "missing release status assets"
+    [ -d "$RELEASE_PLATFORM" ] || fail "missing release platform: $RELEASE_PLATFORM"
+}
+
+replace_dir() {
+    src="$1"
+    dst="$2"
+    tmp="$dst.tmp.$$"
+    parent="${dst%/*}"
+
+    [ -d "$src" ] || fail "missing source directory: $src"
+    mkdir -p "$parent" || fail "failed to create parent: $parent"
+    rm -rf "$tmp" 2>/dev/null || true
+    mv "$src" "$tmp" || fail "failed to stage $src as $tmp"
+    rm -rf "$dst" || fail "failed to remove old directory: $dst"
+    mv "$tmp" "$dst" || fail "failed to promote $tmp to $dst"
+}
+
+install_runtime_files() {
+    cat > "$HOOK_TMP" <<'UMRK_LEAF_HOOK_EOF'
+__HOOK__
+UMRK_LEAF_HOOK_EOF
+
+    cat > "$SESSION_TMP" <<'UMRK_LEAF_SESSION_EOF'
+__SESSION__
+UMRK_LEAF_SESSION_EOF
+
+    cat > "$UNINSTALL_TMP" <<'UMRK_LAUNCHER_UNINSTALL_EOF'
+__UNINSTALLER__
+UMRK_LAUNCHER_UNINSTALL_EOF
+
+    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" || fail "failed to chmod install files"
+    mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
+    mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
+    mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
+    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" 2>/dev/null || true
+}
+
+promote_managed_apps() {
+    [ -f "$MANAGED_APPS" ] || return 0
+    mkdir -p "$APPS_ROOT" || fail "failed to create apps root: $APPS_ROOT"
+
+    while IFS= read -r app || [ -n "$app" ]; do
+        case "$app" in
+            ''|\\#*) continue ;;
+            */*|*\\\\*|.|..) fail "unsafe managed app name: $app" ;;
+        esac
+        replace_dir "$RELEASE_APPS/$app" "$APPS_ROOT/$app"
+        chmod 755 "$APPS_ROOT/$app/launch.sh" "$APPS_ROOT/$app/bin/"* 2>/dev/null || true
+        log_msg "promoted managed app: $app"
+    done < "$MANAGED_APPS"
+}
+
+log_msg "managed Leaf installer starting release=$RELEASE_ID"
+mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
+mkdir -p "$SYSTEM_ROOT" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
+rm -f "$MARKER" 2>/dev/null || true
+rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM".tmp.* 2>/dev/null || true
+
+validate_release
+restore_old_pangu_wrapper
+restore_old_storage_noop
+install_runtime_files
+
+log_msg "promoting launcher payload"
+replace_dir "$RELEASE_LAUNCHER" "$ACTIVE_LAUNCHER"
+mkdir -p "$SYSTEM_ROOT/platforms" || fail "failed to create platform root"
+log_msg "promoting platform payload"
+replace_dir "$RELEASE_PLATFORM" "$ACTIVE_PLATFORM"
+chmod 755 "$ACTIVE_LAUNCHER/bin/"* 2>/dev/null || true
+chmod 755 "$ACTIVE_PLATFORM/bin/retroarch" "$ACTIVE_PLATFORM/cores/"*_libretro.so 2>/dev/null || true
+if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
+    find "$ACTIVE_PLATFORM/platform.d" -type f -exec chmod 755 {} \\; 2>/dev/null || true
+fi
+log_msg "promoting managed apps"
+promote_managed_apps
+
+touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
+touch "$INTERNAL_DATA/release-$RELEASE_ID-installed" 2>/dev/null || true
+log_msg "enabling Leaf marker"
+touch "$MARKER" || fail "failed to enable Leaf marker"
+sync
+
+log_msg "managed Leaf install complete release=$RELEASE_ID"
+echo "managed Leaf install complete"
+"""
+    return (
+        template
+        .replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+        .replace("__RELEASE_ID__", release_id)
+        .replace("__HOOK__", hook)
+        .replace("__SESSION__", session)
+        .replace("__UNINSTALLER__", uninstaller)
+    )
+
+
+def build_recovery_script() -> str:
+    template = """#!/bin/sh
+set -u
+
+PLATFORM="${PLATFORM:-mlp1}"
+SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
+SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
+USERDATA_PATH="${USERDATA_PATH:-$SYSTEM_ROOT/userdata/$PLATFORM}"
+LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+MARKER="${UMRK_MARKER_PATH:-$SYSTEM_ROOT/enabled}"
+LOG="$LOGS_PATH/umrk-launcher-recovery.log"
+HOOK=/etc/init.d/S50leaf
+SESSION=/usr/bin/umrk-leaf-session
+UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
+
+log_msg() {
+    mkdir -p "$LOGS_PATH" "$SYSTEM_ROOT/state" 2>/dev/null || true
+    printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+log_msg "Leaf recovery starting"
+mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
+rm -f "$MARKER" 2>/dev/null || true
+
+if [ -x "$UNINSTALL" ]; then
+    "$UNINSTALL" >>"$LOG" 2>&1 || log_msg "installed uninstaller returned failure"
+fi
+
+rm -f "$HOOK" "$SESSION" "$UNINSTALL" 2>/dev/null || true
+sync
+
+log_msg "Leaf recovery complete"
+echo "Leaf recovery complete"
+"""
+    return template.replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+
+
+def install_command(completion_action: str = "sleep") -> str:
+    completion = completion_command(completion_action)
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
@@ -255,7 +516,24 @@ def install_command() -> str:
         f"sh $SDCARD_PATH/{INSTALLER_NAME} >>$INSTALL_LOG 2>&1; "
         "printf 'launcher switcher installer returned\\n' >>$INSTALL_LOG 2>/dev/null || true; "
         "sync; "
-        "while true; do sleep 3600; done"
+        f"{completion}"
+    )
+
+
+def recovery_command(completion_action: str = "sleep") -> str:
+    completion = completion_command(completion_action)
+    return (
+        f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
+        "PLATFORM=${PLATFORM:-mlp1}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
+        "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
+        "mkdir -p $LOGS_PATH 2>/dev/null || true; "
+        "RECOVERY_LOG=$LOGS_PATH/umrk-launcher-recovery-command.log; "
+        "printf 'launcher switcher recovery otaCommand started\\n' >$RECOVERY_LOG 2>/dev/null || true; "
+        f"sh $SDCARD_PATH/{RECOVERY_NAME} >>$RECOVERY_LOG 2>&1; "
+        "printf 'launcher switcher recovery returned\\n' >>$RECOVERY_LOG 2>/dev/null || true; "
+        "sync; "
+        f"{completion}"
     )
 
 
@@ -288,9 +566,25 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("install", "probe"),
+        choices=("install", "managed-install", "probe", "recovery"),
         default="install",
         help="Payload command mode. Defaults to install.",
+    )
+    parser.add_argument(
+        "--release-id",
+        default=None,
+        help="Leaf release id to promote in managed-install mode.",
+    )
+    parser.add_argument(
+        "--no-require-adb-pinned",
+        action="store_true",
+        help="Skip the ADB-pinned preflight for installer generation.",
+    )
+    parser.add_argument(
+        "--completion-action",
+        choices=("sleep", "reboot"),
+        default="sleep",
+        help="What otaCommand does after the script returns. Defaults to sleep.",
     )
     parser.add_argument(
         "--ver-inner",
@@ -339,6 +633,10 @@ def write_payload(args: argparse.Namespace) -> None:
     validate_ota_file_name(args.ota_file)
     if args.ver_inner < 1:
         raise SystemExit("--ver-inner must be positive")
+    if args.mode == "managed-install":
+        if args.release_id is None:
+            raise SystemExit("--release-id is required for --mode managed-install")
+        validate_release_id(args.release_id)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -346,6 +644,7 @@ def write_payload(args: argparse.Namespace) -> None:
     ota_path = output_dir / args.ota_file
     trigger_path = output_dir / "loong_upgrade"
     installer_path = output_dir / INSTALLER_NAME
+    recovery_path = output_dir / RECOVERY_NAME
 
     write_bytes_if_allowed(ota_path, DEFAULT_PROBE_CONTENT, args.force)
     ota_hash, hash_input = loong_upgrade_hash(args.ver_inner, args.ota_file, ota_path.stat().st_size)
@@ -354,8 +653,10 @@ def write_payload(args: argparse.Namespace) -> None:
         command = args.command
     elif args.mode == "probe":
         command = probe_command()
+    elif args.mode == "recovery":
+        command = recovery_command(args.completion_action)
     else:
-        command = install_command()
+        command = install_command(args.completion_action)
 
     payload = {
         "verInner": args.ver_inner,
@@ -370,15 +671,29 @@ def write_payload(args: argparse.Namespace) -> None:
     )
 
     if args.command is None and args.mode == "install":
-        write_text_if_allowed(installer_path, build_installer_script(), args.force)
+        write_text_if_allowed(
+            installer_path,
+            build_installer_script(require_adb_pinned=not args.no_require_adb_pinned),
+            args.force,
+        )
+    elif args.command is None and args.mode == "managed-install":
+        write_text_if_allowed(installer_path, build_managed_installer_script(args.release_id), args.force)
+    elif args.command is None and args.mode == "recovery":
+        write_text_if_allowed(recovery_path, build_recovery_script(), args.force)
+        if installer_path.exists() and args.force:
+            installer_path.unlink()
     elif installer_path.exists() and args.force:
         installer_path.unlink()
+    if args.mode != "recovery" and recovery_path.exists() and args.force:
+        recovery_path.unlink()
 
     print(f"Wrote SD payload directory: {output_dir}")
     print(f"  {trigger_path}")
     print(f"  {ota_path}")
     if installer_path.exists():
         print(f"  {installer_path}")
+    if recovery_path.exists():
+        print(f"  {recovery_path}")
     print(f"otaHash: {ota_hash}")
     print(f"hash input: {hash_input}")
     print(f"mode: {args.mode if args.command is None else 'custom'}")
