@@ -25,6 +25,7 @@ CRASH_WINDOW_SECONDS=120
 CRASH_THRESHOLD=3
 OWNED_POWER_PID="$TMPDIR/umrk-leaf-loong_power.pid"
 OWNED_LIGHT_PID="$TMPDIR/umrk-leaf-loong_light.pid"
+AUDIO_SPK_KEEPER_PID="$TMPDIR/umrk-audio-spk-keeper.pid"
 
 [ -f /etc/profile ] && . /etc/profile
 
@@ -433,6 +434,18 @@ stop_leaf_owned_loong() {
     stop_remaining_processes_by_name loong_power
 }
 
+stop_audio_spk_keeper() {
+    [ -f "$AUDIO_SPK_KEEPER_PID" ] || return 0
+    pid="$(cat "$AUDIO_SPK_KEEPER_PID" 2>/dev/null || true)"
+    rm -f "$AUDIO_SPK_KEEPER_PID" 2>/dev/null || true
+    case "$pid" in *[!0-9]*|'') return 0 ;; esac
+    [ -d "/proc/$pid" ] || return 0
+    log_msg "stopping audio speaker keeper pid=$pid"
+    kill "$pid" 2>/dev/null || true
+    sleep .2
+    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+}
+
 kill_stale_custom_launcher() {
     for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
         pids="$(pidof "$name" 2>/dev/null || true)"
@@ -535,6 +548,7 @@ run_platform_hooks() {
 pass_to_stock() {
     reason="$1"
     log_msg "$reason; passing boot to stock S50loong"
+    stop_audio_spk_keeper
     kill_stale_custom_launcher
     stop_leaf_owned_loong
     restore_sd_noexec
@@ -543,6 +557,7 @@ pass_to_stock() {
 
 leaf_stop() {
     log_msg "leaf stop requested"
+    stop_audio_spk_keeper
     kill_stale_custom_launcher
     stop_leaf_owned_loong
     exit 0
