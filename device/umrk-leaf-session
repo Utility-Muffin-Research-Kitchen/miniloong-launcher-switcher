@@ -806,8 +806,7 @@ leaf_start() {
     export_leaf_env
     start_pulseaudio_if_needed
     start_owned_loong loong_power /oem/loong/record/config/loong_power.cfg "$OWNED_POWER_PID"
-    # loong_light reads its stock config itself; passing the cfg path makes it exit.
-    start_owned_loong loong_light "" "$OWNED_LIGHT_PID"
+    log_msg "skipping loong_light; Jawaka owns LED ring in Leaf mode"
     run_platform_hooks
     kill_stale_custom_launcher
 
