@@ -126,6 +126,10 @@ umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
 umrk_env_default JAWAKA_RUNTIME_DIR "$UMRK_RUNTIME_PATH"
 umrk_env_default JAWAKA_RETROARCH_BIN "$UMRK_RETROARCH_BIN"
 umrk_env_default JAWAKA_RETROARCH_CORES_DIR "$CORES_PATH"
+umrk_env_default UMRK_AUDIO_OUTPUT "SPEAKER"
+umrk_env_default UMRK_AUDIO_DEVICE "default"
+umrk_env_default JAWAKA_AUDIO_OUTPUT "$UMRK_AUDIO_OUTPUT"
+umrk_env_default JAWAKA_AUDIO_DEVICE "$UMRK_AUDIO_DEVICE"
 # Resident same-core switch experiment cap:
 #   0 disables resident content switching
 #   1 keeps the current safe default
