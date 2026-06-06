@@ -162,9 +162,11 @@ set -u
 
 PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
-USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}"
+SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
+PLATFORM_ROOT="$SYSTEM_ROOT/platforms/$PLATFORM"
+USERDATA_PATH="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
 PANGU_BACKUP=/loong/loong_pangu.stock.umrk
@@ -291,17 +293,17 @@ SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 RELEASE_ID="__RELEASE_ID__"
 SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
 RELEASE_ROOT="$SYSTEM_ROOT/releases/$RELEASE_ID"
-RELEASE_LAUNCHER="$RELEASE_ROOT/launcher"
 RELEASE_PLATFORM="$RELEASE_ROOT/platforms/$PLATFORM"
+RELEASE_LAUNCHER="$RELEASE_PLATFORM/launcher"
 RELEASE_APPS="$RELEASE_ROOT/Apps"
 MANAGED_APPS="$RELEASE_ROOT/managed-apps.txt"
-ACTIVE_LAUNCHER="$SYSTEM_ROOT/launcher"
 ACTIVE_PLATFORM="$SYSTEM_ROOT/platforms/$PLATFORM"
+ACTIVE_LAUNCHER="$ACTIVE_PLATFORM/launcher"
 APPS_ROOT="$SDCARD_PATH/Apps"
-USERDATA_PATH="${USERDATA_PATH:-$SYSTEM_ROOT/userdata/$PLATFORM}"
+USERDATA_PATH="${USERDATA_PATH:-$ACTIVE_PLATFORM/userdata}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SYSTEM_ROOT/state}"
-MARKER="${UMRK_MARKER_PATH:-$SYSTEM_ROOT/enabled}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$ACTIVE_PLATFORM/state}"
+MARKER="${UMRK_MARKER_PATH:-$ACTIVE_PLATFORM/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
 PANGU_BACKUP=/loong/loong_pangu.stock.umrk
@@ -388,6 +390,20 @@ replace_dir() {
     mv "$tmp" "$dst" || fail "failed to promote $tmp to $dst"
 }
 
+replace_file() {
+    src="$1"
+    dst="$2"
+    tmp="$dst.tmp.$$"
+    parent="${dst%/*}"
+
+    [ -f "$src" ] || fail "missing source file: $src"
+    mkdir -p "$parent" || fail "failed to create parent: $parent"
+    rm -f "$tmp" 2>/dev/null || true
+    mv "$src" "$tmp" || fail "failed to stage $src as $tmp"
+    rm -f "$dst" || fail "failed to remove old file: $dst"
+    mv "$tmp" "$dst" || fail "failed to promote $tmp to $dst"
+}
+
 install_runtime_files() {
     cat > "$HOOK_TMP" <<'UMRK_LEAF_HOOK_EOF'
 __HOOK__
@@ -436,9 +452,9 @@ promote_managed_apps() {
 
 log_msg "managed Leaf installer starting release=$RELEASE_ID"
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
-mkdir -p "$SYSTEM_ROOT" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
+mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
 rm -f "$MARKER" 2>/dev/null || true
-rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM".tmp.* 2>/dev/null || true
+rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
 
 validate_release
 restore_old_pangu_wrapper
@@ -447,9 +463,21 @@ install_runtime_files
 
 log_msg "promoting launcher payload"
 replace_dir "$RELEASE_LAUNCHER" "$ACTIVE_LAUNCHER"
-mkdir -p "$SYSTEM_ROOT/platforms" || fail "failed to create platform root"
+mkdir -p "$ACTIVE_PLATFORM" || fail "failed to create active platform root"
 log_msg "promoting platform payload"
-replace_dir "$RELEASE_PLATFORM" "$ACTIVE_PLATFORM"
+for payload_entry in bin cores info defaults platform.d autoconfig boot-animation manifest.json; do
+    rm -rf "$ACTIVE_PLATFORM/$payload_entry" 2>/dev/null || true
+done
+for payload_dir in bin cores info defaults platform.d autoconfig boot-animation; do
+    if [ -d "$RELEASE_PLATFORM/$payload_dir" ]; then
+        replace_dir "$RELEASE_PLATFORM/$payload_dir" "$ACTIVE_PLATFORM/$payload_dir"
+    fi
+done
+for payload_file in manifest.json; do
+    if [ -f "$RELEASE_PLATFORM/$payload_file" ]; then
+        replace_file "$RELEASE_PLATFORM/$payload_file" "$ACTIVE_PLATFORM/$payload_file"
+    fi
+done
 chmod 755 "$ACTIVE_LAUNCHER/bin/"* 2>/dev/null || true
 chmod 755 "$ACTIVE_PLATFORM/bin/retroarch" "$ACTIVE_PLATFORM/cores/"*_libretro.so 2>/dev/null || true
 if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
@@ -484,16 +512,17 @@ set -u
 PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
-USERDATA_PATH="${USERDATA_PATH:-$SYSTEM_ROOT/userdata/$PLATFORM}"
+PLATFORM_ROOT="$SYSTEM_ROOT/platforms/$PLATFORM"
+USERDATA_PATH="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
-MARKER="${UMRK_MARKER_PATH:-$SYSTEM_ROOT/enabled}"
+MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-recovery.log"
 HOOK=/etc/init.d/S50leaf
 SESSION=/usr/bin/umrk-leaf-session
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 
 log_msg() {
-    mkdir -p "$LOGS_PATH" "$SYSTEM_ROOT/state" 2>/dev/null || true
+    mkdir -p "$LOGS_PATH" "$PLATFORM_ROOT/state" 2>/dev/null || true
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
@@ -519,7 +548,9 @@ def install_command(completion_action: str = "sleep") -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
-        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
+        "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
+        "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
+        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "INSTALL_LOG=$LOGS_PATH/umrk-launcher-install-command.log; "
@@ -536,7 +567,9 @@ def recovery_command(completion_action: str = "sleep") -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
-        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
+        "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
+        "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
+        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "RECOVERY_LOG=$LOGS_PATH/umrk-launcher-recovery-command.log; "
@@ -552,9 +585,11 @@ def probe_command() -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
-        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}; "
+        "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
+        "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
+        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
-        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.system/leaf/state}; "
+        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}; "
         "mkdir -p $LOGS_PATH $INTERNAL_DATA 2>/dev/null || true; "
         "LOG=$LOGS_PATH/umrk-launcher-probe.log; "
         "printf 'launcher switcher probe started\\n' >$LOG 2>/dev/null || true; "

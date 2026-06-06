@@ -172,8 +172,8 @@ adb reboot
 ```
 
 ADB staging defaults `REMOTE_SDCARD_PATH` to `auto`. It resolves the mounted
-card with `.system/leaf/enabled` and/or
-`.system/leaf/launcher/bin/loong_pangu`, uses the only mounted SD on one-card
+card with `.system/leaf/platforms/mlp1/enabled` and/or
+`.system/leaf/platforms/mlp1/launcher/bin/loong_pangu`, uses the only mounted SD on one-card
 boots, and fails instead of guessing when two mounted cards are ambiguous. For
 first-time two-card staging or an intentional override, pass
 `REMOTE_SDCARD_PATH=/mnt/sdcard` or

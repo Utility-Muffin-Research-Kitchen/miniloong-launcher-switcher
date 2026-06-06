@@ -9,15 +9,15 @@ SD_MOUNT="${SDCARD_PATH:-/mnt/sdcard}"
 SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-/media/sdcard1}"
 TMPDIR="${TMPDIR:-/tmp}"
 RUNTIME_DIR="${UMRK_RUNTIME_PATH:-$TMPDIR/jawaka-runtime}"
-USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
+USERDATA_DIR="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
 LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
 LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-leaf-session.log}"
-BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
+BUNDLE="${UMRK_LAUNCHER_PATH:-$PLATFORM_ROOT/launcher}"
 ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
 BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
-PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
-MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
+MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
 ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
 CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
@@ -49,8 +49,8 @@ mountpoint_is_mounted() {
 launcher_candidate_ready() {
     root="$1"
     [ -n "$root" ] || return 1
-    [ -e "$root/.system/leaf/enabled" ] || return 1
-    [ -f "$root/.system/leaf/launcher/bin/loong_pangu" ] || return 1
+    [ -e "$root/.system/leaf/platforms/$PLATFORM/enabled" ] || return 1
+    [ -f "$root/.system/leaf/platforms/$PLATFORM/launcher/bin/loong_pangu" ] || return 1
     return 0
 }
 
@@ -62,15 +62,15 @@ load_env_file() {
 refresh_paths() {
     SD_MOUNT="${SDCARD_PATH:-$SD_MOUNT}"
     SECONDARY_SD_MOUNT="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
-    BUNDLE="${UMRK_LAUNCHER_PATH:-$SD_MOUNT/.system/leaf/launcher}"
-    BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
     PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SD_MOUNT/.system/leaf/platforms/$PLATFORM}}"
+    BUNDLE="${UMRK_LAUNCHER_PATH:-$PLATFORM_ROOT/launcher}"
+    BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
     RUNTIME_DIR="${UMRK_RUNTIME_PATH:-$TMPDIR/jawaka-runtime}"
-    USERDATA_DIR="${USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/$PLATFORM}"
+    USERDATA_DIR="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
     LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
     LOG="${UMRK_LAUNCHER_LOG:-$LOG_DIR/umrk-leaf-session.log}"
-    INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SD_MOUNT/.system/leaf/state}"
-    MARKER="${UMRK_MARKER_PATH:-$SD_MOUNT/.system/leaf/enabled}"
+    INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
+    MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
     ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
     CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
     CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
@@ -84,14 +84,15 @@ set_active_launcher_sd() {
     export SDCARD_PATH="$active"
     export SYSTEM_PATH="$active/.system/leaf/platforms/$PLATFORM"
     export UMRK_PLATFORM_PATH="$SYSTEM_PATH"
-    export UMRK_LAUNCHER_PATH="$active/.system/leaf/launcher"
+    export UMRK_LAUNCHER_PATH="$SYSTEM_PATH/launcher"
     export UMRK_BIN_PATH="$UMRK_LAUNCHER_PATH/bin"
-    export USERDATA_PATH="$active/.system/leaf/userdata/$PLATFORM"
-    export SHARED_USERDATA_PATH="$active/.system/leaf/userdata/shared"
+    export UMRK_ENV_FILE="$UMRK_LAUNCHER_PATH/env.sh"
+    export USERDATA_PATH="$SYSTEM_PATH/userdata"
+    export SHARED_USERDATA_PATH="$active/.system/leaf/shared/userdata"
     export LOGS_PATH="$USERDATA_PATH/logs"
-    export UMRK_INTERNAL_DATA_PATH="$active/.system/leaf/state"
-    export UMRK_MARKER_PATH="$active/.system/leaf/enabled"
-    export UMRK_ADB_MARKER_PATH="$active/.system/leaf/state/adb-enabled"
+    export UMRK_INTERNAL_DATA_PATH="$SYSTEM_PATH/state"
+    export UMRK_MARKER_PATH="$SYSTEM_PATH/enabled"
+    export UMRK_ADB_MARKER_PATH="$UMRK_INTERNAL_DATA_PATH/adb-enabled"
 
     if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
        mountpoint_is_mounted "$alternate"; then
@@ -501,11 +502,12 @@ export_leaf_env() {
     export UMRK_PLATFORM_PATH="${UMRK_PLATFORM_PATH:-$PLATFORM_ROOT}"
     export UMRK_LAUNCHER_PATH="${UMRK_LAUNCHER_PATH:-$BUNDLE}"
     export UMRK_BIN_PATH="${UMRK_BIN_PATH:-$BUNDLE/bin}"
+    export UMRK_ENV_FILE="${UMRK_ENV_FILE:-$BUNDLE/env.sh}"
     export UMRK_RUNTIME_PATH="${UMRK_RUNTIME_PATH:-$RUNTIME_DIR}"
     export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
     export UMRK_LEAF_MODE="${UMRK_LEAF_MODE:-1}"
     export USERDATA_PATH="${USERDATA_PATH:-$USERDATA_DIR}"
-    export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.system/leaf/userdata/shared}"
+    export SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SD_MOUNT/.system/leaf/shared/userdata}"
     export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
     export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
     export UMRK_MARKER_PATH="${UMRK_MARKER_PATH:-$MARKER}"

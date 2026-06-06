@@ -3,12 +3,14 @@ set -u
 
 PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"
-ENV_FILE="${UMRK_ENV_FILE:-$SDCARD_PATH/.system/leaf/launcher/env.sh}"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SDCARD_PATH/.system/leaf/platforms/$PLATFORM}}"
+ENV_FILE="${UMRK_ENV_FILE:-$PLATFORM_ROOT/launcher/env.sh}"
 if [ -f "$ENV_FILE" ]; then
     . "$ENV_FILE"
 fi
 
-USERDATA_DIR="${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}"
+PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SDCARD_PATH/.system/leaf/platforms/$PLATFORM}}"
+USERDATA_DIR="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
 LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
 LOG="${UMRK_UNINSTALL_LOG:-$LOG_DIR/umrk-launcher-uninstall.log}"
 TARGET=/loong/loong_pangu

@@ -7,8 +7,10 @@ SD_DIR := $(BUILD)/sd
 # (build Jawaka + gather Catastrophe/RetroArch/cores) and points BUNDLE_ROOT at
 # it; standalone use defaults to this repo's build/package.
 BUNDLE_ROOT ?= $(BUILD)/package
-BUNDLE_DIR := $(BUNDLE_ROOT)/.system/leaf/launcher
 SYSTEM_DIR := $(BUNDLE_ROOT)/.system/leaf
+PLATFORM_ID ?= mlp1
+PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
+BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
         adb-install-wrapper adb-uninstall-wrapper \
@@ -39,15 +41,14 @@ sd-payload:
 	@rm -rf "$(SD_DIR)"
 	python3 make_launcher_switcher_sd.py --force "$(SD_DIR)"
 	@mkdir -p "$(SD_DIR)/.system/leaf"
-	@cp -R "$(BUNDLE_DIR)" "$(SD_DIR)/.system/leaf/launcher"
-	@if [ ! -f "$(SD_DIR)/.system/leaf/launcher/env.sh" ]; then cp -f device/umrk-env.sh "$(SD_DIR)/.system/leaf/launcher/env.sh"; fi
 	@if [ -d "$(SYSTEM_DIR)/platforms" ]; then cp -R "$(SYSTEM_DIR)/platforms" "$(SD_DIR)/.system/leaf/platforms"; fi
+	@if [ ! -f "$(SD_DIR)/.system/leaf/platforms/$(PLATFORM_ID)/launcher/env.sh" ]; then cp -f device/umrk-env.sh "$(SD_DIR)/.system/leaf/platforms/$(PLATFORM_ID)/launcher/env.sh"; fi
 	@find "$(SD_DIR)" -maxdepth 8 -type f | sort
 
 sd-payload-marked: sd-payload
-	@mkdir -p "$(SD_DIR)/.system/leaf"
-	@touch "$(SD_DIR)/.system/leaf/enabled"
-	@echo "Added marker: $(SD_DIR)/.system/leaf/enabled"
+	@mkdir -p "$(SD_DIR)/.system/leaf/platforms/$(PLATFORM_ID)"
+	@touch "$(SD_DIR)/.system/leaf/platforms/$(PLATFORM_ID)/enabled"
+	@echo "Added marker: $(SD_DIR)/.system/leaf/platforms/$(PLATFORM_ID)/enabled"
 
 adb-stage-sd-bundle:
 	BUNDLE_ROOT="$(BUNDLE_ROOT)" scripts/adb-stage-sd-bundle.sh --marker
