@@ -49,8 +49,16 @@ UMRK card to the secondary mount.
 
 Leaf mode deliberately skips stock `loong_daemon`, `loong_storage`,
 `loong_service`, `loong_input`, and stock `loong_pangu`. It starts USB ADB only
-when ADB is pinned, then starts PulseAudio, `loong_power`, and `loong_light`,
-then Jawaka. Jawaka's
+when ADB is pinned. Because bypassing stock `S50loong` also bypasses
+`loong_transition`, the Leaf session installs the Leaf boot animation, starts
+`loong_transition` itself, and Jawaka dismisses it after the first launcher
+frame. When the session passes through to stock, it restores the backed-up stock
+boot animation before returning to `S50loong`. A
+`state/boot-splash-disabled` marker, toggled from Jawaka's Behavior settings,
+skips the Leaf transition and keeps the stock boot animation restored.
+
+After the boot splash handoff, Leaf starts PulseAudio, `loong_power`, and
+`loong_light`, then Jawaka. Jawaka's
 `Exit to Stock` menu item writes a tmpfs sentinel; the session cleans up
 Leaf-owned processes and exits, allowing the same boot to continue into stock.
 
@@ -220,6 +228,8 @@ disables the marker and passes boot to stock. Remount failure also disables the
 marker immediately, because the direct-SD Jawaka path cannot run safely while
 the SD-card mount is `noexec`. Runtime `SDCARD_PATH` still defaults to
 `/mnt/sdcard`; deploy-time `REMOTE_SDCARD_PATH` defaults to auto-resolution.
+The Leaf boot splash can be disabled from Settings > Behavior > Boot Splash,
+which writes `.system/leaf/platforms/mlp1/state/boot-splash-disabled`.
 
 ## SD Install
 

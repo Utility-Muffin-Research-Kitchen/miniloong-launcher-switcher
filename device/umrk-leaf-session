@@ -19,6 +19,7 @@ BUNDLE_BIN="${UMRK_BIN_PATH:-$BUNDLE/bin}/loong_pangu"
 INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
 MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
 ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
+BOOT_SPLASH_DISABLED="${UMRK_BOOT_SPLASH_DISABLED_PATH:-$INTERNAL_DATA/boot-splash-disabled}"
 CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
 CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
 EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
@@ -27,6 +28,11 @@ CRASH_THRESHOLD=3
 OWNED_POWER_PID="$TMPDIR/umrk-leaf-loong_power.pid"
 OWNED_LIGHT_PID="$TMPDIR/umrk-leaf-loong_light.pid"
 AUDIO_SPK_KEEPER_PID="$TMPDIR/umrk-audio-spk-keeper.pid"
+BOOT_TRANSITION_PID="$TMPDIR/umrk-leaf-loong_transition.pid"
+BOOT_STAMP="/loong/textures/.umrk-boot-installed"
+BOOT_MODE="/loong/textures/.umrk-boot-mode"
+BOOT_STOCK_DIR="/loong/textures/boot.stock"
+BOOT_STOCK_CFG="/loong/textures/boot.cfg.stock.umrk"
 
 [ -f /etc/profile ] && . /etc/profile
 
@@ -72,6 +78,7 @@ refresh_paths() {
     INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
     MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
     ADB_MARKER="${UMRK_ADB_MARKER_PATH:-$INTERNAL_DATA/adb-enabled}"
+    BOOT_SPLASH_DISABLED="${UMRK_BOOT_SPLASH_DISABLED_PATH:-$INTERNAL_DATA/boot-splash-disabled}"
     CRASH_STATE="${UMRK_CRASH_STATE:-$USERDATA_DIR/umrk-launcher-crash-state}"
     CLEAN_EXIT_SENTINEL="${UMRK_CLEAN_EXIT_SENTINEL:-$TMPDIR/umrk-clean-exit}"
     EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stock}"
@@ -93,6 +100,7 @@ set_active_launcher_sd() {
     export UMRK_INTERNAL_DATA_PATH="$SYSTEM_PATH/state"
     export UMRK_MARKER_PATH="$SYSTEM_PATH/enabled"
     export UMRK_ADB_MARKER_PATH="$UMRK_INTERNAL_DATA_PATH/adb-enabled"
+    export UMRK_BOOT_SPLASH_DISABLED_PATH="$UMRK_INTERNAL_DATA_PATH/boot-splash-disabled"
 
     if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
        mountpoint_is_mounted "$alternate"; then
@@ -518,6 +526,7 @@ export_leaf_env() {
     export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
     export UMRK_MARKER_PATH="${UMRK_MARKER_PATH:-$MARKER}"
     export UMRK_ADB_MARKER_PATH="${UMRK_ADB_MARKER_PATH:-$ADB_MARKER}"
+    export UMRK_BOOT_SPLASH_DISABLED_PATH="${UMRK_BOOT_SPLASH_DISABLED_PATH:-$BOOT_SPLASH_DISABLED}"
     export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
     export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
     export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
@@ -574,9 +583,163 @@ run_platform_hooks() {
     done
 }
 
+rootfs_restore_ro() {
+    mount -o remount,ro / 2>/dev/null || true
+}
+
+count_pngs() {
+    dir="$1"
+    count="$(find "$dir" -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+    case "$count" in *[!0-9]*|'') count=0 ;; esac
+    printf '%s\n' "$count"
+}
+
+write_stock_boot_cfg_fallback() {
+    seq0="$(count_pngs "$BOOT_STOCK_DIR/0")"
+    seq1="$(count_pngs "$BOOT_STOCK_DIR/1")"
+    [ "$seq0" -gt 0 ] 2>/dev/null || seq0=1
+    [ "$seq1" -gt 0 ] 2>/dev/null || seq1=1
+    printf '{"dir":"/loong/textures/boot","bg":255,"seques":[{"num":%s,"interval":100,"wait":0,"repeat":1},{"num":%s,"interval":100,"wait":0,"repeat":-1}]}\n' \
+        "$seq0" "$seq1" >/loong/textures/boot.cfg 2>/dev/null
+}
+
+restore_stock_boot_animation() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+
+    mode="$(cat "$BOOT_MODE" 2>/dev/null || true)"
+    if [ "$mode" = "stock" ] && [ -d "$BOOT_STOCK_DIR" ]; then
+        return 0
+    fi
+
+    if [ ! -d "$BOOT_STOCK_DIR" ]; then
+        log_msg "stock boot animation backup missing; leaving current boot animation"
+        return 1
+    fi
+
+    remount_root_rw || {
+        log_msg "could not remount root rw for stock boot animation restore"
+        return 1
+    }
+
+    mkdir -p /loong/textures/boot/0 /loong/textures/boot/1 2>/dev/null || true
+    rm -f /loong/textures/boot/0/* /loong/textures/boot/1/* 2>/dev/null || true
+    cp "$BOOT_STOCK_DIR/0/"*.png /loong/textures/boot/0/ 2>/dev/null || true
+    cp "$BOOT_STOCK_DIR/1/"*.png /loong/textures/boot/1/ 2>/dev/null || true
+    if [ -f "$BOOT_STOCK_CFG" ]; then
+        cp "$BOOT_STOCK_CFG" /loong/textures/boot.cfg 2>/dev/null || true
+    else
+        write_stock_boot_cfg_fallback || true
+    fi
+    chmod 755 /loong/textures/boot /loong/textures/boot/0 /loong/textures/boot/1 2>/dev/null || true
+    chmod 644 /loong/textures/boot.cfg /loong/textures/boot/0/* /loong/textures/boot/1/* 2>/dev/null || true
+    printf 'stock\n' >"$BOOT_MODE" 2>/dev/null || true
+    rootfs_restore_ro
+    log_msg "restored stock boot animation"
+    return 0
+}
+
+boot_splash_disabled() {
+    [ -e "$BOOT_SPLASH_DISABLED" ]
+}
+
+ensure_leaf_boot_animation() {
+    [ "$PLATFORM" = "mlp1" ] || return 1
+    boot_splash_disabled && {
+        restore_stock_boot_animation || true
+        log_msg "boot splash disabled by user setting"
+        return 1
+    }
+
+    src="$PLATFORM_ROOT/boot-animation"
+    [ -d "$src/0" ] || {
+        log_msg "Leaf boot animation source missing: $src"
+        return 1
+    }
+
+    mode="$(cat "$BOOT_MODE" 2>/dev/null || true)"
+    if [ "$mode" = "leaf" ] && [ -f "$BOOT_STAMP" ]; then
+        return 0
+    fi
+
+    had_stock=0
+    [ -d "$BOOT_STOCK_DIR" ] && had_stock=1
+
+    remount_root_rw || {
+        log_msg "could not remount root rw for Leaf boot animation install"
+        return 1
+    }
+
+    if [ "$had_stock" -eq 0 ]; then
+        cp -r /loong/textures/boot "$BOOT_STOCK_DIR" 2>/dev/null || true
+        [ -f /loong/textures/boot.cfg ] && cp /loong/textures/boot.cfg "$BOOT_STOCK_CFG" 2>/dev/null || true
+    fi
+
+    mkdir -p /loong/textures/boot/0 /loong/textures/boot/1 2>/dev/null || true
+    rm -f /loong/textures/boot/0/* /loong/textures/boot/1/* 2>/dev/null || true
+    cp "$src/0/"*.png /loong/textures/boot/0/ 2>/dev/null || true
+    cp "$src/1/"*.png /loong/textures/boot/1/ 2>/dev/null || true
+    [ -f "$src/boot.cfg" ] && cp "$src/boot.cfg" /loong/textures/boot.cfg 2>/dev/null || true
+    chmod 755 /loong/textures/boot /loong/textures/boot/0 /loong/textures/boot/1 2>/dev/null || true
+    chmod 644 /loong/textures/boot.cfg /loong/textures/boot/0/* /loong/textures/boot/1/* 2>/dev/null || true
+    touch "$BOOT_STAMP" 2>/dev/null || true
+    printf 'leaf\n' >"$BOOT_MODE" 2>/dev/null || true
+    rootfs_restore_ro
+    log_msg "installed Leaf boot animation"
+    return 0
+}
+
+start_boot_transition() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    boot_splash_disabled && return 0
+    [ -x /loong/loong_transition ] || return 0
+    [ -f /loong/textures/boot.cfg ] || return 0
+    pidof loong_transition >/dev/null 2>&1 && return 0
+
+    param="$(cat /loong/textures/boot.cfg 2>/dev/null || true)"
+    [ -n "$param" ] || return 0
+
+    if pgrep -x weston >/dev/null 2>&1; then
+        i=0
+        while [ "$i" -lt 500 ]; do
+            [ -e "${XDG_RUNTIME_DIR:-/var/run}/wayland-0" ] && break
+            sleep .1
+            i=$((i + 1))
+        done
+    fi
+
+    log_msg "starting Leaf boot transition"
+    (
+        cd /loong 2>/dev/null || exit 127
+        export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
+        export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+        ./loong_transition "$param"
+    ) >>"$LOG" 2>&1 &
+    echo "$!" >"$BOOT_TRANSITION_PID" 2>/dev/null || true
+}
+
+stop_boot_transition() {
+    pid="$(cat "$BOOT_TRANSITION_PID" 2>/dev/null || true)"
+    rm -f "$BOOT_TRANSITION_PID" 2>/dev/null || true
+    case "$pid" in *[!0-9]*|'') pid="" ;; esac
+    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+        log_msg "stopping leaf-owned loong_transition pid=$pid"
+        kill "$pid" 2>/dev/null || true
+        sleep .2
+        [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+        return 0
+    fi
+    pids="$(pidof loong_transition 2>/dev/null || true)"
+    [ -n "$pids" ] && {
+        log_msg "stopping remaining loong_transition pids=$pids"
+        kill $pids 2>/dev/null || true
+    }
+}
+
 pass_to_stock() {
     reason="$1"
     log_msg "$reason; passing boot to stock S50loong"
+    stop_boot_transition
+    restore_stock_boot_animation || true
     stop_audio_spk_keeper
     kill_stale_custom_launcher
     stop_leaf_owned_loong
@@ -586,6 +749,7 @@ pass_to_stock() {
 
 leaf_stop() {
     log_msg "leaf stop requested"
+    stop_boot_transition
     stop_audio_spk_keeper
     kill_stale_custom_launcher
     stop_leaf_owned_loong
@@ -606,6 +770,10 @@ leaf_start() {
     if stock_ota_present; then
         pass_to_stock "stock loong_upgrade present"
         return 0
+    fi
+
+    if ensure_leaf_boot_animation; then
+        start_boot_transition
     fi
 
     if adb_restore_requested && ! adb_is_pinned; then

@@ -30,13 +30,20 @@ To change the logo: drop a new RGBA PNG in `assets/`, point `LOGO_PATH` at it,
 and tune `logo_target_w` (size, fraction of frame width) / `dy` (top margin).
 Current logo is `Leaf.png` (the "Leaf" CFW identity); `dweezil.png` is the prior one.
 
-## On-device install (handled by platform.d/02-boot-animation.sh)
+## On-device install
 
-First boot copies `SD:/UMRK/mlp1/boot-animation/{0,1}/*.png` + `boot.cfg` into
-`/loong/textures/boot/` (+ `/loong/textures/boot.cfg`). Stock animation is backed
-up to `/loong/textures/boot.stock`; a stamp (`/loong/textures/.umrk-boot-installed`)
-prevents re-copy. To re-install after updating frames: delete the stamp, or copy
-manually (remount `/` rw first).
+Leaf mode copies `SD:/.system/leaf/platforms/mlp1/boot-animation/{0,1}/*.png`
+and `boot.cfg` into `/loong/textures/boot/` before starting Jawaka, then starts
+`/loong/loong_transition` directly because the `S50leaf` boot path bypasses
+stock `S50loong`. Stock animation is backed up to `/loong/textures/boot.stock`
+and `/loong/textures/boot.cfg.stock.umrk`; a mode marker
+(`/loong/textures/.umrk-boot-mode`) avoids re-copying while the desired mode is
+already active.
+
+When Leaf passes through to stock, the session restores the stock backup before
+returning to `S50loong`. The compatibility `platform.d/02-boot-animation.sh`
+keeps older/direct paths in sync. To disable Leaf's boot splash, Jawaka writes
+`.system/leaf/platforms/mlp1/state/boot-splash-disabled`.
 
 ---
 
