@@ -12,7 +12,9 @@ SRC="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/.system/le
 # Source frames not on SD card — nothing to install.
 [ -d "$SRC/0" ] || exit 0
 
-mount -o remount,rw / 2>/dev/null || exit 0
+mount -o remount,rw / 2>/dev/null ||
+    mount -o remount,rw /dev/root / 2>/dev/null ||
+    exit 0
 
 # Backup stock animation if not already done.
 if [ ! -d /loong/textures/boot.stock ]; then

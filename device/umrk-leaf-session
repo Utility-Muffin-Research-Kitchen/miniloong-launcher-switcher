@@ -171,11 +171,17 @@ adb_restore_requested() {
     [ -e "$ADB_MARKER" ]
 }
 
+remount_root_rw() {
+    mount -o remount,rw / 2>>"$LOG" && return 0
+    mount -o remount,rw /dev/root / 2>>"$LOG"
+}
+
 pin_adb() {
     [ -x /usr/bin/adbd ] || return 1
     [ -x /etc/init.d/S50usb-gadget.sh ] || return 1
     [ -f /etc/.usb_config ] || return 1
 
+    remount_root_rw || return 1
     chattr -i /etc/.usb_config >/dev/null 2>&1 || true
     printf 'usb_adb_en\n' >/etc/.usb_config || return 1
     chattr +i /etc/.usb_config || return 1

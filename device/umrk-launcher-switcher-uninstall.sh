@@ -28,6 +28,11 @@ log_msg() {
     printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
+remount_root_rw() {
+    mount -o remount,rw / 2>>"$LOG" && return 0
+    mount -o remount,rw /dev/root / 2>>"$LOG"
+}
+
 is_umrk_noop_storage() {
     [ -f "$STORAGE" ] && grep -q "umrk-noop" "$STORAGE" 2>/dev/null
 }
@@ -63,6 +68,10 @@ restore_stock_storage() {
 }
 
 log_msg "uninstall starting"
+if ! remount_root_rw; then
+    log_msg "rootfs remount rw failed"
+    echo "rootfs remount rw failed" >&2
+fi
 storage_restore_status=0
 restore_stock_storage || storage_restore_status=$?
 

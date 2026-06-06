@@ -190,6 +190,15 @@ fail() {
     exit 1
 }
 
+remount_root_rw() {
+    if mount -o remount,rw / 2>>"$LOG" ||
+       mount -o remount,rw /dev/root / 2>>"$LOG"; then
+        log_msg "rootfs remounted rw"
+        return 0
+    fi
+    return 1
+}
+
 assert_adb_pinned() {
     [ -x /usr/bin/adbd ] || fail "ADB support missing: /usr/bin/adbd"
     [ -x /etc/init.d/S50usb-gadget.sh ] || fail "ADB support missing: /etc/init.d/S50usb-gadget.sh"
@@ -243,6 +252,7 @@ restore_old_storage_noop() {
 
 log_msg "launcher switcher installer starting"
 __ADB_PREFLIGHT__
+remount_root_rw || fail "rootfs remount rw failed"
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
 restore_old_pangu_wrapper
 restore_old_storage_noop
@@ -325,6 +335,15 @@ fail() {
     log_msg "$*"
     echo "$*" >&2
     exit 1
+}
+
+remount_root_rw() {
+    if mount -o remount,rw / 2>>"$LOG" ||
+       mount -o remount,rw /dev/root / 2>>"$LOG"; then
+        log_msg "rootfs remounted rw"
+        return 0
+    fi
+    return 1
 }
 
 is_old_umrk_pangu_wrapper() {
@@ -456,6 +475,7 @@ mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
 
+remount_root_rw || fail "rootfs remount rw failed"
 validate_release
 restore_old_pangu_wrapper
 restore_old_storage_noop
@@ -526,9 +546,17 @@ log_msg() {
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
+remount_root_rw() {
+    mount -o remount,rw / 2>>"$LOG" && return 0
+    mount -o remount,rw /dev/root / 2>>"$LOG"
+}
+
 log_msg "Leaf recovery starting"
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
 rm -f "$MARKER" 2>/dev/null || true
+if ! remount_root_rw; then
+    log_msg "rootfs remount rw failed"
+fi
 
 if [ -x "$UNINSTALL" ]; then
     "$UNINSTALL" >>"$LOG" 2>&1 || log_msg "installed uninstaller returned failure"
