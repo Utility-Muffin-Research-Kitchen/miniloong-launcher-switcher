@@ -8,6 +8,7 @@ SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"
 USERDATA_DIR="${USERDATA_PATH:-$SDCARD_PATH/.system/leaf/userdata/$PLATFORM}"
 SSH_STATE_ROOT="${UMRK_SSH_STATE_DIR:-$USERDATA_DIR/umrk-ssh-server}"
 APPS_ROOT="${APPS_PATH:-${SDCARD_PATH:-/mnt/sdcard}/Apps}"
+PLATFORM_APPS_ROOT="$APPS_ROOT/$PLATFORM"
 
 SSH_CONFIG="$SSH_STATE_ROOT/config.ini"
 SSH_HOSTKEYS="$SSH_STATE_ROOT/hostkeys"
@@ -23,7 +24,7 @@ fi
 # Find Dropbear — bundled in the SSH server app pak, or on PATH.
 DROPBEAR=""
 for candidate in \
-    "$APPS_ROOT/SSHServer.pak/runtime/bin/dropbear" \
+    "$PLATFORM_APPS_ROOT/SSHServer.pak/runtime/bin/dropbear" \
     /usr/sbin/dropbear \
     /usr/bin/dropbear; do
     if [ -x "$candidate" ]; then

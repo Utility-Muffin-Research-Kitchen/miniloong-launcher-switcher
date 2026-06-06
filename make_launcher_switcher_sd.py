@@ -415,7 +415,18 @@ promote_managed_apps() {
     while IFS= read -r app || [ -n "$app" ]; do
         case "$app" in
             ''|\\#*) continue ;;
-            */*|*\\\\*|.|..) fail "unsafe managed app name: $app" ;;
+            *\\\\*|/*|*//*|.|..) fail "unsafe managed app path: $app" ;;
+        esac
+        platform_dir="${app%%/*}"
+        app_name="${app#*/}"
+        if [ "$platform_dir" = "$app" ] || [ -z "$platform_dir" ] || [ -z "$app_name" ]; then
+            fail "managed app path must be <platform>/<pak>: $app"
+        fi
+        case "$platform_dir" in
+            .|..|.*|*/*) fail "unsafe managed app platform: $app" ;;
+        esac
+        case "$app_name" in
+            .|..|.*|*/*) fail "unsafe managed app name: $app" ;;
         esac
         replace_dir "$RELEASE_APPS/$app" "$APPS_ROOT/$app"
         chmod 755 "$APPS_ROOT/$app/launch.sh" "$APPS_ROOT/$app/bin/"* 2>/dev/null || true

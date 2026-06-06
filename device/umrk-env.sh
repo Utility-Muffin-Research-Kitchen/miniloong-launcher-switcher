@@ -87,6 +87,7 @@ umrk_env_default UMRK_RUNTIME_PATH "$_umrk_default_runtime"
 case "$PLATFORM" in
     mlp1)
         umrk_env_default UMRK_SECONDARY_SDCARD_PATH "/media/sdcard1"
+        umrk_env_default UMRK_SSH_PRIMARY_IFACE "wlan0"
         _umrk_sdcard_paths="$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH"
         _umrk_roms_paths="$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms"
         _umrk_images_paths="$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images"
