@@ -184,8 +184,20 @@ log_msg() {
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
+cleanup_stock_payloads() {
+    for root in /mnt/sdcard /media/sdcard1 "$SDCARD_PATH"; do
+        [ -n "$root" ] && [ -d "$root" ] || continue
+        if [ -e "$root/loong_upgrade" ]; then
+            mv "$root/loong_upgrade" "$root/loong_upgrade.used" 2>/dev/null ||
+                rm -f "$root/loong_upgrade" 2>/dev/null || true
+        fi
+        rm -f "$root/launcher_probe.bin" "$root/umrk-launcher-install.sh" 2>/dev/null || true
+    done
+}
+
 fail() {
     log_msg "$*"
+    cleanup_stock_payloads
     echo "$*" >&2
     exit 1
 }
@@ -299,8 +311,25 @@ def build_managed_installer_script(release_id: str) -> str:
 set -u
 
 PLATFORM="${PLATFORM:-mlp1}"
-SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 RELEASE_ID="__RELEASE_ID__"
+REQUESTED_SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
+
+resolve_sdcard_path() {
+    fallback=""
+    for candidate in "$REQUESTED_SDCARD_PATH" /mnt/sdcard /media/sdcard1; do
+        [ -n "$candidate" ] || continue
+        [ -d "$candidate/.system/leaf/releases/$RELEASE_ID/platforms/$PLATFORM/launcher" ] || continue
+        if [ -e "$candidate/.system/leaf/platforms/$PLATFORM/enabled" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        [ -n "$fallback" ] || fallback="$candidate"
+    done
+    [ -n "$fallback" ] && printf '%s\n' "$fallback" && return 0
+    printf '%s\n' "$REQUESTED_SDCARD_PATH"
+}
+
+SDCARD_PATH="$(resolve_sdcard_path)"
 SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
 RELEASE_ROOT="$SYSTEM_ROOT/releases/$RELEASE_ID"
 RELEASE_PLATFORM="$RELEASE_ROOT/platforms/$PLATFORM"
@@ -331,8 +360,20 @@ log_msg() {
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
+cleanup_stock_payloads() {
+    for root in /mnt/sdcard /media/sdcard1 "$SDCARD_PATH"; do
+        [ -n "$root" ] && [ -d "$root" ] || continue
+        if [ -e "$root/loong_upgrade" ]; then
+            mv "$root/loong_upgrade" "$root/loong_upgrade.used" 2>/dev/null ||
+                rm -f "$root/loong_upgrade" 2>/dev/null || true
+        fi
+        rm -f "$root/launcher_probe.bin" "$root/umrk-launcher-install.sh" 2>/dev/null || true
+    done
+}
+
 fail() {
     log_msg "$*"
+    cleanup_stock_payloads
     echo "$*" >&2
     exit 1
 }
@@ -469,8 +510,28 @@ promote_managed_apps() {
     done < "$MANAGED_APPS"
 }
 
-log_msg "managed Leaf installer starting release=$RELEASE_ID"
-mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
+write_release_json() {
+    tmp="$INTERNAL_DATA/release.json.tmp.$$"
+    installed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%F %T' 2>/dev/null || echo unknown)"
+    cat > "$tmp" <<EOF
+{
+  "schema": 1,
+  "product": "leaf",
+  "platform": "$PLATFORM",
+  "version": "$RELEASE_ID",
+  "release_id": "$RELEASE_ID",
+  "installed_at": "$installed_at",
+  "source": "managed-install"
+}
+EOF
+    mv "$tmp" "$INTERNAL_DATA/release.json" || fail "failed to write release metadata"
+}
+
+log_msg "managed Leaf installer starting release=$RELEASE_ID sdcard=$SDCARD_PATH requested=$REQUESTED_SDCARD_PATH"
+for root in /mnt/sdcard /media/sdcard1 "$SDCARD_PATH"; do
+    [ -n "$root" ] && [ -d "$root" ] || continue
+    mv "$root/loong_upgrade" "$root/loong_upgrade.used" 2>/dev/null || true
+done
 mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
@@ -506,10 +567,12 @@ fi
 log_msg "promoting managed apps"
 promote_managed_apps
 
+write_release_json
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 touch "$INTERNAL_DATA/release-$RELEASE_ID-installed" 2>/dev/null || true
 log_msg "enabling Leaf marker"
 touch "$MARKER" || fail "failed to enable Leaf marker"
+cleanup_stock_payloads
 sync
 
 log_msg "managed Leaf install complete release=$RELEASE_ID"
@@ -576,6 +639,12 @@ def install_command(completion_action: str = "sleep") -> str:
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
+        "INSTALLER_ROOT=; "
+        "for candidate in $SDCARD_PATH /mnt/sdcard /media/sdcard1; do "
+        f"[ -f \"$candidate/{INSTALLER_NAME}\" ] || continue; "
+        "INSTALLER_ROOT=$candidate; break; "
+        "done; "
+        "[ -n \"$INSTALLER_ROOT\" ] || INSTALLER_ROOT=$SDCARD_PATH; "
         "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
         "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
         "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
@@ -583,7 +652,7 @@ def install_command(completion_action: str = "sleep") -> str:
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "INSTALL_LOG=$LOGS_PATH/umrk-launcher-install-command.log; "
         "printf 'launcher switcher otaCommand started\\n' >$INSTALL_LOG 2>/dev/null || true; "
-        f"sh $SDCARD_PATH/{INSTALLER_NAME} >>$INSTALL_LOG 2>&1; "
+        f"SDCARD_PATH=$INSTALLER_ROOT sh $INSTALLER_ROOT/{INSTALLER_NAME} >>$INSTALL_LOG 2>&1; "
         "printf 'launcher switcher installer returned\\n' >>$INSTALL_LOG 2>/dev/null || true; "
         "sync; "
         f"{completion}"
