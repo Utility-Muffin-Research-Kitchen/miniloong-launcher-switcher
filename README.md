@@ -100,11 +100,11 @@ this update path.
 
 ## Build the Low-Level SD Payload
 
-First assemble the launcher payload from the workspace (builds Jawaka and
-gathers Catastrophe/RetroArch/cores into `build/stage/mlp1/package`):
+First assemble the launcher payload from Leaf (builds Jawaka and gathers
+Catastrophe/RetroArch/cores into `Leaf/build/stage/mlp1/package`):
 
 ```sh
-make assemble-jawaka
+make -C ../Leaf assemble-jawaka DEVICE=mlp1
 ```
 
 Then wrap it into an SD-root OTA install payload, pointing `BUNDLE_ROOT` at the
@@ -112,7 +112,7 @@ assembled tree:
 
 ```sh
 cd miniloong-launcher-switcher
-make sd-payload BUNDLE_ROOT=../build/stage/mlp1/package
+make sd-payload BUNDLE_ROOT=../Leaf/build/stage/mlp1/package
 ```
 
 The SD-root payload is written to:
@@ -123,12 +123,13 @@ build/sd/
   launcher_probe.bin
   umrk-launcher-install.sh
   .system/leaf/
-    launcher/
-      bin/loong_pangu
-      bin/jawaka-launcher
-      bin/jawaka-menu
-      res/
     platforms/mlp1/
+      launcher/
+        env.sh
+        bin/loong_pangu
+        bin/jawaka-launcher
+        bin/jawaka-menu
+        res/
       manifest.json
       defaults/
 ```
@@ -137,7 +138,7 @@ It does not enable the runtime marker by default. To generate a marked payload
 for trusted one-card activation:
 
 ```sh
-make sd-payload-marked BUNDLE_ROOT=../build/stage/mlp1/package
+make sd-payload-marked BUNDLE_ROOT=../Leaf/build/stage/mlp1/package
 ```
 
 This direct payload path is mostly useful for switcher development and ADB
@@ -175,7 +176,7 @@ Stage the launcher bundle on the active Leaf SD card and enable the marker
 (point `BUNDLE_ROOT` at the assembled payload):
 
 ```sh
-make adb-stage-sd-bundle BUNDLE_ROOT=../build/stage/mlp1/package
+make adb-stage-sd-bundle BUNDLE_ROOT=../Leaf/build/stage/mlp1/package
 adb reboot
 ```
 
@@ -190,7 +191,7 @@ first-time two-card staging or an intentional override, pass
 Stage the launcher bundle without activating it:
 
 ```sh
-make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=../build/stage/mlp1/package
+make adb-stage-sd-bundle-no-marker BUNDLE_ROOT=../Leaf/build/stage/mlp1/package
 ```
 
 Toggle activation and reboot to exercise the init hook:
