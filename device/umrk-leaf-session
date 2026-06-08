@@ -744,6 +744,12 @@ pass_to_stock() {
     kill_stale_custom_launcher
     stop_leaf_owned_loong
     restore_sd_noexec
+    # Hand the rootfs back to stock in the state it boots with (the kernel cmdline
+    # mounts it rw). restore_stock_boot_animation leaves the rootfs read-only, but
+    # stock S50loong runs `#!/bin/sh -e` and does `chmod 0775 loong_daemon` before
+    # launching it — on a read-only rootfs that chmod fails, errexit aborts the
+    # script, loong_daemon never starts, and the device hands off to a black screen.
+    remount_root_rw || log_msg "could not remount rootfs rw for stock handoff"
     return 0
 }
 
