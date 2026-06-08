@@ -20,6 +20,17 @@ wpa_state() {
     wpa_cli -i "$IFACE" status 2>/dev/null | sed -n 's/^wpa_state=//p' | head -n 1
 }
 
+# Dump association/link detail so a failed connect is diagnosable from the SD
+# log without live ADB. Filters the passphrase out of wpa_cli status.
+dump_wifi_diag() {
+    echo "wifi-dhcpv4: --- diag ($1) ---"
+    wpa_cli -i "$IFACE" status 2>/dev/null |
+        grep -ivE '^(psk|sae_password|password|pmk)=' |
+        sed 's/^/wifi-dhcpv4: status: /'
+    ip -4 addr show "$IFACE" 2>/dev/null | sed 's/^/wifi-dhcpv4: addr: /'
+    echo "wifi-dhcpv4: --- end diag ---"
+}
+
 run_worker() {
     i=0
     trap 'rm -f "$PIDFILE"' EXIT INT TERM
@@ -48,6 +59,7 @@ run_worker() {
 
     if [ "$(wpa_state)" != "COMPLETED" ]; then
         echo "wifi-dhcpv4: $IFACE did not associate within ${WAIT_SECONDS}s; skipping DHCPv4"
+        dump_wifi_diag "assoc-timeout"
         return 0
     fi
 
@@ -76,6 +88,7 @@ run_worker() {
         ip -4 route 2>/dev/null | sed 's/^/wifi-dhcpv4: /'
     else
         echo "wifi-dhcpv4: DHCPv4 did not install an address on $IFACE (rc=$rc)"
+        dump_wifi_diag "dhcp-fail"
     fi
 }
 
