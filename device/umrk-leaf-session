@@ -398,9 +398,15 @@ start_usb_adb() {
 start_pulseaudio_if_needed() {
     pidof pulseaudio >/dev/null 2>&1 && return 0
     if [ -x /usr/bin/pulseaudio ]; then
-        log_msg "starting pulseaudio"
         umask 077
-        PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio >>"$LOG" 2>&1 &
+        pa_cfg="$PLATFORM_ROOT/defaults/pulse-default.pa"
+        if [ -f "$pa_cfg" ]; then
+            log_msg "starting pulseaudio (leaf config)"
+            PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio -nF "$pa_cfg" >>"$LOG" 2>&1 &
+        else
+            log_msg "starting pulseaudio"
+            PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio >>"$LOG" 2>&1 &
+        fi
     else
         log_msg "pulseaudio missing"
     fi
@@ -481,11 +487,13 @@ stop_audio_spk_keeper() {
 }
 
 kill_stale_custom_launcher() {
+    found=0
     for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         if [ -n "$pids" ]; then
             log_msg "stopping stale $name pids=$pids"
             kill $pids 2>/dev/null || true
+            found=1
         fi
     done
 
@@ -494,8 +502,11 @@ kill_stale_custom_launcher() {
         [ -n "$pids" ] && {
             log_msg "stopping stale jawaka-retroarch-runner pids=$pids"
             kill $pids 2>/dev/null || true
+            found=1
         }
     fi
+
+    [ "$found" -eq 1 ] || return 0
 
     sleep 1
 

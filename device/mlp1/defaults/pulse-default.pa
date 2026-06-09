@@ -1,0 +1,27 @@
+#!/usr/bin/pulseaudio -nF
+# Trimmed PulseAudio startup script for the MLP1 in Leaf mode.
+#
+# Loaded by umrk-leaf-session via `pulseaudio -nF` instead of the stock
+# /etc/pulse/default.pa (rootfs is read-only). The stock script loads modules
+# the device cannot satisfy and fails on every boot:
+#   - module-alsa-source device=hw:1,0  (no capture device)
+#   - module-console-kit                (no ConsoleKit/D-Bus session bus)
+#   - module-rescue-streams             (obsolete in this PA release)
+#   - module-udev-detect / bluetooth / esound / gsettings / jackdbus
+# The MLP1 has exactly one fixed playback device (hw:1,0), declared statically.
+
+# Restore per-stream/device volumes before the sink loads so it picks them up.
+load-module module-device-restore
+load-module module-stream-restore
+load-module module-default-device-restore
+
+load-module module-alsa-sink device=hw:1,0
+
+# Same socket path as the stock config; clients (SDL, RetroArch) rely on it.
+load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse-socket
+
+load-module module-always-sink
+load-module module-suspend-on-idle timeout=1
+
+.nofail
+set-default-sink alsa_output.hw_1_0
