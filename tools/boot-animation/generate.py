@@ -119,9 +119,12 @@ def main():
             fn(i).save(os.path.join(d, f"{i}.png"))
         print(f"sequence {seq}: {n} frames")
 
+    # Loop interval 120ms: 8 frames -> ~960ms per breath cycle, matched to the
+    # LED ring breath (~955ms measured at speed 10; the nominal 25ms tick runs
+    # ~37ms in practice from the per-LED I2C writes).
     cfg = ('{"dir":"/loong/textures/boot","bg":0,"seques":['
            '{"num":%d,"interval":100,"wait":0,"repeat":0},'
-           '{"num":%d,"interval":100,"wait":0,"repeat":-1}]}'
+           '{"num":%d,"interval":120,"wait":0,"repeat":-1}]}'
            % (ASSEMBLY_FRAMES, LOOP_FRAMES))
     with open(os.path.join(OUT, "boot.cfg"), "w") as f:
         f.write(cfg)
