@@ -124,6 +124,13 @@ umrk_env_default UMRK_MARKER_PATH "$SYSTEM_PATH/enabled"
 umrk_env_default UMRK_ADB_MARKER_PATH "$UMRK_INTERNAL_DATA_PATH/adb-enabled"
 
 umrk_env_default UMRK_RETROARCH_BIN "$SYSTEM_PATH/bin/retroarch"
+# RetroArch's HOME-based config dir: where it reads per-core configs and
+# AUTOMATIC shader presets (global.glslp etc). RA does not auto-load the global
+# `video_shader` cfg value at boot, so apps that want a shader to auto-apply
+# (e.g. Fugazi's global CRT) drop a preset here. jawakad launches RetroArch with
+# HOME = the SD state dir (jw_retroarch_state_dir = UMRK_INTERNAL_DATA_PATH/
+# retroarch), so RA's whole config tree lives on the SD card.
+umrk_env_default UMRK_RETROARCH_CONFIG_DIR "$UMRK_INTERNAL_DATA_PATH/retroarch/.config/retroarch/config"
 umrk_env_default JAWAKA_SDCARD_ROOT "$SDCARD_PATH"
 umrk_env_default JAWAKA_RUNTIME_DIR "$UMRK_RUNTIME_PATH"
 umrk_env_default JAWAKA_RETROARCH_BIN "$UMRK_RETROARCH_BIN"
