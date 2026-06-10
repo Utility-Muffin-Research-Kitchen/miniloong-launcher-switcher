@@ -152,6 +152,7 @@ umrk_env_default CAT_FONT_PATH "fonts/SpaceGrotesk/SpaceGrotesk-Regular.ttf"
 # Status-bar / hint chrome for direct/manual pak launches. jawakad overrides
 # these with the live persisted prefs; these defaults match the launcher's own.
 umrk_env_default CAT_STATUS_SHOW_WIFI "1"
+umrk_env_default CAT_STATUS_SHOW_BLUETOOTH "1"
 umrk_env_default CAT_STATUS_SHOW_BATTERY "1"
 umrk_env_default CAT_STATUS_SHOW_BATTERY_LEVEL "0"
 umrk_env_default CAT_STATUS_CLOCK "24"
