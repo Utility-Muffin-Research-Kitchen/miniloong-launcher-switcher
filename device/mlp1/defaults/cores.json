@@ -3,24 +3,6 @@
   "platform": "mlp1",
   "cores": [
     {
-      "id": "2048",
-      "display_name": "2048",
-      "type": "retroarch",
-      "libretro_name": "2048",
-      "file_name": "2048_libretro.so",
-      "config_folder": "2048",
-      "info_name": "2048_libretro.info",
-      "path": null,
-      "supports_menu": true,
-      "supports_savestate": true,
-      "supports_disk_control": false,
-      "needs_swap": false,
-      "platforms": [
-        "mlp1"
-      ],
-      "status": "packaged"
-    },
-    {
       "id": "bluemsx",
       "display_name": "blueMSX",
       "type": "retroarch",

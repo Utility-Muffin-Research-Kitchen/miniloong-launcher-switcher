@@ -8,8 +8,8 @@
       "patterns": [
         "32X",
         "32x",
-        "sega32x",
         "SEGA32X",
+        "sega32x",
         "THIRTYTWOX",
         "thirtytwox"
       ],
@@ -97,12 +97,12 @@
       "patterns": [
         "ATARI2600",
         "2600",
-        "a2600",
         "A2600",
-        "atari",
+        "a2600",
         "ATARI",
-        "atari2600",
+        "atari",
         "Atari2600",
+        "atari2600",
         "TWENTYSIXHUNDRED"
       ],
       "extensions": [
@@ -168,9 +168,9 @@
       "patterns": [
         "DC",
         "dc",
-        "dreamcast",
         "DREAMCAST",
         "Dreamcast",
+        "dreamcast",
         "Sega Dreamcast"
       ],
       "extensions": [
@@ -206,6 +206,95 @@
       "bios_notes": []
     },
     {
+      "id": "DOS",
+      "name": "MS-DOS",
+      "patterns": [
+        "DOS",
+        "dos",
+        "MSDOS",
+        "msdos",
+        "DOSBOX",
+        "dosbox"
+      ],
+      "extensions": [
+        "bat",
+        "com",
+        "conf",
+        "dosz",
+        "exe",
+        "ima",
+        "img",
+        "ins",
+        "iso",
+        "jrc",
+        "tc",
+        "vhd"
+      ],
+      "archive_extensions": [
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "bat",
+        "com",
+        "conf",
+        "dosz",
+        "exe",
+        "ima",
+        "img",
+        "ins",
+        "iso",
+        "jrc",
+        "tc",
+        "vhd"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u",
+        "m3u8"
+      ],
+      "m3u_generation": "none",
+      "default_core": "dosbox_pure",
+      "alternate_cores": [],
+      "rom_root": "Roms/DOS",
+      "image_root": "Images/DOS",
+      "bios_notes": []
+    },
+    {
+      "id": "EASYRPG",
+      "name": "EasyRPG",
+      "patterns": [
+        "EASYRPG",
+        "easyrpg",
+        "RPGMAKER",
+        "rpgmaker"
+      ],
+      "extensions": [
+        "easyrpg",
+        "ldb"
+      ],
+      "archive_extensions": [
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "easyrpg",
+        "ldb"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [
+        "RPG_RT.ldb"
+      ],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "easyrpg",
+      "alternate_cores": [],
+      "rom_root": "Roms/EASYRPG",
+      "image_root": "Images/EASYRPG",
+      "bios_notes": []
+    },
+    {
       "id": "FC",
       "name": "NES",
       "patterns": [
@@ -213,8 +302,8 @@
         "FAMICOM",
         "famicom",
         "fc",
-        "nes",
-        "NES"
+        "NES",
+        "nes"
       ],
       "extensions": [
         "fds",
@@ -287,8 +376,8 @@
       "name": "GB",
       "patterns": [
         "GB",
-        "dmg",
         "DMG",
+        "dmg",
         "GAMEBOY",
         "gameboy",
         "gb",
@@ -372,8 +461,8 @@
         "GBC",
         "CGB",
         "cgb",
-        "gameboycolor",
         "GAMEBOYCOLOR",
+        "gameboycolor",
         "gbc"
       ],
       "extensions": [
@@ -514,12 +603,42 @@
       "bios_notes": []
     },
     {
+      "id": "GW",
+      "name": "Game & Watch",
+      "patterns": [
+        "GW",
+        "gw",
+        "GAMEANDWATCH",
+        "gameandwatch"
+      ],
+      "extensions": [
+        "mgw"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "mgw"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "gw",
+      "alternate_cores": [],
+      "rom_root": "Roms/GW",
+      "image_root": "Images/GW",
+      "bios_notes": []
+    },
+    {
       "id": "LYNX",
       "name": "Atari Lynx",
       "patterns": [
         "LYNX",
-        "atarilynx",
         "ATARILYNX",
+        "atarilynx",
         "lynx"
       ],
       "extensions": [
@@ -740,8 +859,8 @@
       "patterns": [
         "N64",
         "n64",
-        "nintendo64",
-        "NINTENDO64"
+        "NINTENDO64",
+        "nintendo64"
       ],
       "extensions": [
         "n64",
@@ -885,8 +1004,8 @@
       "name": "NGP",
       "patterns": [
         "NGP",
-        "neogeopocket",
         "NEOGEOPOCKET",
+        "neogeopocket",
         "NGC",
         "ngp"
       ],
@@ -959,8 +1078,8 @@
         "pcengine",
         "TURBOGRAFX",
         "turbografx",
-        "turbografx16",
-        "TURBOGRAFX16"
+        "TURBOGRAFX16",
+        "turbografx16"
       ],
       "extensions": [
         "ccd",
@@ -1035,6 +1154,39 @@
       ]
     },
     {
+      "id": "PICO8",
+      "name": "Pico-8",
+      "patterns": [
+        "PICO8",
+        "pico8",
+        "PICO",
+        "pico",
+        "P8",
+        "p8",
+        "FAKE08",
+        "fake08"
+      ],
+      "extensions": [
+        "p8",
+        "png"
+      ],
+      "archive_extensions": [],
+      "archive_inner_extensions": [
+        "p8",
+        "png"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "fake08",
+      "alternate_cores": [],
+      "rom_root": "Roms/PICO8",
+      "image_root": "Images/PICO8",
+      "bios_notes": []
+    },
+    {
       "id": "PORTS",
       "name": "Ports",
       "patterns": [
@@ -1086,10 +1238,10 @@
         "playstation",
         "ps",
         "PS1",
-        "psone",
         "PSONE",
-        "psx",
-        "PSX"
+        "psone",
+        "PSX",
+        "psx"
       ],
       "extensions": [
         "cbn",
@@ -1169,8 +1321,8 @@
         "PS",
         "ps",
         "PS1",
-        "psone",
         "PSONE",
+        "psone",
         "psx"
       ],
       "extensions": [
@@ -1444,8 +1596,8 @@
       "name": "SNES",
       "patterns": [
         "SNES",
-        "sfc",
         "SFC",
+        "sfc",
         "snes",
         "SUPERFAMICOM",
         "superfamicom",
