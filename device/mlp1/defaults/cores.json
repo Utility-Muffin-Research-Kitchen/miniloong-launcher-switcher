@@ -838,7 +838,7 @@
       "file_name": null,
       "config_folder": null,
       "info_name": null,
-      "path": "/mnt/SDCARD/Emu/PSP/launch.sh",
+      "path": "emulators/ppsspp/launch.sh",
       "supports_menu": false,
       "supports_savestate": false,
       "supports_disk_control": false,
@@ -846,7 +846,7 @@
       "platforms": [
         "mlp1"
       ],
-      "status": "defer"
+      "status": "packaged"
     },
     {
       "id": "prosystem",
