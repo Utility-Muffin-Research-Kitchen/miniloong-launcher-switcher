@@ -14,6 +14,24 @@ DEFAULT_PROBE_CONTENT = b"miniloong launcher switcher probe\n"
 INSTALLER_NAME = "umrk-launcher-install.sh"
 RECOVERY_NAME = "umrk-launcher-recovery.sh"
 MLP1_SDCARD_PATH = "/mnt/sdcard"
+
+# Platform payload entries the managed installer promotes from
+# releases/<id>/platforms/<platform>/ into the active platform dir. The
+# coverage check at build time fails when the staged payload contains an
+# entry this list does not cover, so a new payload type cannot ship
+# un-promoted (v0.0.8 stranded emulators/ this way). "launcher" is promoted
+# separately as the launcher payload.
+PROMOTED_PLATFORM_DIRS = (
+    "bin",
+    "cores",
+    "info",
+    "defaults",
+    "platform.d",
+    "autoconfig",
+    "boot-animation",
+    "emulators",
+)
+PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
 COMPLETION_REBOOT = (
     "reboot -f 2>/dev/null || "
@@ -302,6 +320,25 @@ echo "installed launcher switcher init hook"
     )
 
 
+def validate_platform_payload_coverage(sd_root: Path, release_id: str,
+                                       platform: str = "mlp1") -> None:
+    """Fail the build when the staged release platform payload contains an
+    entry the generated installer would not promote. Without this, a new
+    payload directory ships in the ZIP but never reaches the active platform
+    dir on install (how v0.0.8 stranded emulators/)."""
+    payload = sd_root / ".system/leaf/releases" / release_id / "platforms" / platform
+    if not payload.is_dir():
+        return
+    known = set(PROMOTED_PLATFORM_DIRS) | set(PROMOTED_PLATFORM_FILES) | {"launcher"}
+    unknown = sorted(entry.name for entry in payload.iterdir()
+                     if entry.name not in known)
+    if unknown:
+        raise SystemExit(
+            "error: release platform payload contains entries the installer "
+            f"does not promote: {' '.join(unknown)} "
+            "(add them to PROMOTED_PLATFORM_DIRS/FILES in make_launcher_switcher_sd.py)")
+
+
 def build_managed_installer_script(release_id: str) -> str:
     validate_release_id(release_id)
     hook = read_required(HOOK_PATH).rstrip()
@@ -546,21 +583,24 @@ log_msg "promoting launcher payload"
 replace_dir "$RELEASE_LAUNCHER" "$ACTIVE_LAUNCHER"
 mkdir -p "$ACTIVE_PLATFORM" || fail "failed to create active platform root"
 log_msg "promoting platform payload"
-for payload_entry in bin cores info defaults platform.d autoconfig boot-animation manifest.json; do
+for payload_entry in __PROMOTED_DIRS__ __PROMOTED_FILES__; do
     rm -rf "$ACTIVE_PLATFORM/$payload_entry" 2>/dev/null || true
 done
-for payload_dir in bin cores info defaults platform.d autoconfig boot-animation; do
+for payload_dir in __PROMOTED_DIRS__; do
     if [ -d "$RELEASE_PLATFORM/$payload_dir" ]; then
         replace_dir "$RELEASE_PLATFORM/$payload_dir" "$ACTIVE_PLATFORM/$payload_dir"
     fi
 done
-for payload_file in manifest.json; do
+for payload_file in __PROMOTED_FILES__; do
     if [ -f "$RELEASE_PLATFORM/$payload_file" ]; then
         replace_file "$RELEASE_PLATFORM/$payload_file" "$ACTIVE_PLATFORM/$payload_file"
     fi
 done
 chmod 755 "$ACTIVE_LAUNCHER/bin/"* 2>/dev/null || true
 chmod 755 "$ACTIVE_PLATFORM/bin/retroarch" "$ACTIVE_PLATFORM/cores/"*_libretro.so 2>/dev/null || true
+if [ -d "$ACTIVE_PLATFORM/emulators" ]; then
+    chmod -R 755 "$ACTIVE_PLATFORM/emulators" 2>/dev/null || true
+fi
 if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
     find "$ACTIVE_PLATFORM/platform.d" -type f -exec chmod 755 {} \\; 2>/dev/null || true
 fi
@@ -582,6 +622,8 @@ echo "managed Leaf install complete"
         template
         .replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
         .replace("__RELEASE_ID__", release_id)
+        .replace("__PROMOTED_DIRS__", " ".join(PROMOTED_PLATFORM_DIRS))
+        .replace("__PROMOTED_FILES__", " ".join(PROMOTED_PLATFORM_FILES))
         .replace("__HOOK__", hook)
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
@@ -820,6 +862,7 @@ def write_payload(args: argparse.Namespace) -> None:
             args.force,
         )
     elif args.command is None and args.mode == "managed-install":
+        validate_platform_payload_coverage(output_dir, args.release_id)
         write_text_if_allowed(installer_path, build_managed_installer_script(args.release_id), args.force)
     elif args.command is None and args.mode == "recovery":
         write_text_if_allowed(recovery_path, build_recovery_script(), args.force)
