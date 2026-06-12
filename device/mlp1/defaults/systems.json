@@ -1654,13 +1654,38 @@
     },
     {
       "id": "TG16",
-      "name": "TG16",
+      "name": "TurboGrafx-16",
       "patterns": [
-        "TG16"
+        "TG16",
+        "PCE",
+        "pce",
+        "PCENGINE",
+        "pcengine",
+        "TURBOGRAFX",
+        "turbografx",
+        "TURBOGRAFX16",
+        "turbografx16"
       ],
-      "extensions": [],
-      "archive_extensions": [],
-      "archive_inner_extensions": [],
+      "extensions": [
+        "ccd",
+        "chd",
+        "cue",
+        "img",
+        "iso",
+        "pce"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "ccd",
+        "chd",
+        "cue",
+        "img",
+        "iso",
+        "pce"
+      ],
       "archive_mode": "pass_through",
       "file_names": [],
       "ignore_file_names": [],

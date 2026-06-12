@@ -64,15 +64,15 @@
       "file_name": null,
       "config_folder": null,
       "info_name": null,
-      "path": "/mnt/SDCARD/.allium/cores/drastic/launch.sh",
-      "supports_menu": false,
+      "path": "emulators/drastic/launch.sh",
+      "supports_menu": true,
       "supports_savestate": false,
       "supports_disk_control": false,
       "needs_swap": false,
       "platforms": [
         "mlp1"
       ],
-      "status": "defer"
+      "status": "packaged"
     },
     {
       "id": "easyrpg",
