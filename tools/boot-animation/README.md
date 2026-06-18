@@ -61,7 +61,7 @@ already active.
 When Leaf passes through to stock, the session restores the stock backup before
 returning to `S50loong`. The compatibility `platform.d/02-boot-animation.sh`
 keeps older/direct paths in sync. To disable Leaf's boot splash, Jawaka writes
-`.system/leaf/platforms/mlp1/state/boot-splash-disabled`.
+`.umrk/mlp1/boot-splash-disabled`.
 
 ---
 

@@ -62,6 +62,28 @@ After the boot splash handoff, Leaf starts PulseAudio, `loong_power`, and
 `Exit to Stock` menu item writes a tmpfs sentinel; the session cleans up
 Leaf-owned processes and exits, allowing the same boot to continue into stock.
 
+## SD Data Layout
+
+Content on the card is split by ownership:
+
+- **`.system/leaf/`** - release-managed firmware (launcher, daemon, defaults,
+  cores). Replaced wholesale on install/upgrade; never user-owned.
+- **`.userdata/<platform>/`** and **`.userdata/shared/`** - durable user/app data
+  (logs, SSH state, per-app state). SD-root owned, never under `.system`.
+- **`.umrk/<platform>/`** - launcher control state (library DB, Wi-Fi config,
+  `release.json`, `adb-enabled`, `boot-splash-disabled`).
+- **Public roots** (`Roms/`, `Images/`, `Apps/`, `BIOS/`, `Saves/`, `States/`,
+  `Cheats/`) - user content at the card root.
+
+The managed installer (`make_launcher_switcher_sd.py`, used by Leaf's release
+ZIP) promotes only release-owned files: the allowlisted platform payload and the
+paks listed in `managed-apps.txt`. It creates any missing public roots from
+`public-dirs.txt`, creates the `.userdata`/`.umrk` data roots (failing the
+install if they cannot be created or written), writes `release.json`, and only
+then re-enables the Leaf marker. **There is no migration step** - it is a clean
+cutover that leaves existing `.userdata`/`.umrk`/public content untouched, so a
+re-extracted ZIP is an in-place upgrade.
+
 ## Build an End-User Install ZIP
 
 The preferred way to build a device installation package is from the sibling
