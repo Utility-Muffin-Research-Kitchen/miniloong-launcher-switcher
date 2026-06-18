@@ -182,9 +182,9 @@ PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
 PLATFORM_ROOT="$SYSTEM_ROOT/platforms/$PLATFORM"
-USERDATA_PATH="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
+USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
 PANGU_BACKUP=/loong/loong_pangu.stock.umrk
@@ -583,7 +583,19 @@ for root in /mnt/sdcard /media/sdcard1 "$SDCARD_PATH"; do
     [ -n "$root" ] && [ -d "$root" ] || continue
     mv "$root/loong_upgrade" "$root/loong_upgrade.used" 2>/dev/null || true
 done
-mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$USERDATA_PATH" "$SHARED_USERDATA_PATH" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
+mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" 2>/dev/null || true
+# The durable data roots MUST exist and be writable, or the install would silently
+# come up with no persistent user/app data or launcher control state. Fail the
+# install here (before the marker is enabled) rather than swallowing the error.
+mkdir -p "$USERDATA_PATH" "$SHARED_USERDATA_PATH" "$LOGS_PATH" "$INTERNAL_DATA" \
+    || fail "could not create data roots ($USERDATA_PATH, $INTERNAL_DATA)"
+for _d in "$USERDATA_PATH" "$INTERNAL_DATA"; do
+    if ( : >"$_d/.umrk-writetest" ) 2>/dev/null; then
+        rm -f "$_d/.umrk-writetest" 2>/dev/null || true
+    else
+        fail "data root not writable: $_d"
+    fi
+done
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
 
@@ -653,8 +665,9 @@ PLATFORM="${PLATFORM:-mlp1}"
 SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 SYSTEM_ROOT="$SDCARD_PATH/.system/leaf"
 PLATFORM_ROOT="$SYSTEM_ROOT/platforms/$PLATFORM"
-USERDATA_PATH="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
+USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}"
 MARKER="${UMRK_MARKER_PATH:-$PLATFORM_ROOT/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-recovery.log"
 HOOK=/etc/init.d/S50leaf
@@ -662,7 +675,7 @@ SESSION=/usr/bin/umrk-leaf-session
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 
 log_msg() {
-    mkdir -p "$LOGS_PATH" "$PLATFORM_ROOT/state" 2>/dev/null || true
+    mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
     printf '[%s] %s\\n' "$(date '+%F %T' 2>/dev/null || echo unknown)" "$*" >>"$LOG" 2>/dev/null || true
 }
 
@@ -743,7 +756,7 @@ def probe_command() -> str:
         "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
         "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
-        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}; "
+        "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}; "
         "mkdir -p $LOGS_PATH $INTERNAL_DATA 2>/dev/null || true; "
         "LOG=$LOGS_PATH/umrk-launcher-probe.log; "
         "printf 'launcher switcher probe started\\n' >$LOG 2>/dev/null || true; "
