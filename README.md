@@ -230,7 +230,7 @@ marker immediately, because the direct-SD Jawaka path cannot run safely while
 the SD-card mount is `noexec`. Runtime `SDCARD_PATH` still defaults to
 `/mnt/sdcard`; deploy-time `REMOTE_SDCARD_PATH` defaults to auto-resolution.
 The Leaf boot splash can be disabled from Settings > Behavior > Boot Splash,
-which writes `.system/leaf/platforms/mlp1/state/boot-splash-disabled`.
+which writes `.umrk/mlp1/boot-splash-disabled`.
 
 ## SD Install
 

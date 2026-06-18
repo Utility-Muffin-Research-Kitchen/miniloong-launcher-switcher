@@ -10,7 +10,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SDCARD_PATH/.system/leaf/platforms/$PLATFORM}}"
-USERDATA_DIR="${USERDATA_PATH:-$PLATFORM_ROOT/userdata}"
+USERDATA_DIR="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 LOG_DIR="${LOGS_PATH:-$USERDATA_DIR/logs}"
 LOG="${UMRK_UNINSTALL_LOG:-$LOG_DIR/umrk-launcher-uninstall.log}"
 TARGET=/loong/loong_pangu

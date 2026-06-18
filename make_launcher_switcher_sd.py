@@ -376,9 +376,10 @@ MANAGED_APPS="$RELEASE_ROOT/managed-apps.txt"
 ACTIVE_PLATFORM="$SYSTEM_ROOT/platforms/$PLATFORM"
 ACTIVE_LAUNCHER="$ACTIVE_PLATFORM/launcher"
 APPS_ROOT="$SDCARD_PATH/Apps"
-USERDATA_PATH="${USERDATA_PATH:-$ACTIVE_PLATFORM/userdata}"
+USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
+SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SDCARD_PATH/.userdata/shared}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
-INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$ACTIVE_PLATFORM/state}"
+INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}"
 MARKER="${UMRK_MARKER_PATH:-$ACTIVE_PLATFORM/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
@@ -564,12 +565,25 @@ EOF
     mv "$tmp" "$INTERNAL_DATA/release.json" || fail "failed to write release metadata"
 }
 
+create_public_dirs() {
+    pubfile="$RELEASE_ROOT/public-dirs.txt"
+    [ -f "$pubfile" ] || return 0
+    while IFS= read -r pubdir || [ -n "$pubdir" ]; do
+        case "$pubdir" in
+            ''|\\#*) continue ;;
+            */*|*..*) continue ;;
+        esac
+        [ -d "$SDCARD_PATH/$pubdir" ] || mkdir -p "$SDCARD_PATH/$pubdir" 2>/dev/null || true
+    done < "$pubfile"
+    log_msg "ensured public content roots from public-dirs.txt"
+}
+
 log_msg "managed Leaf installer starting release=$RELEASE_ID sdcard=$SDCARD_PATH requested=$REQUESTED_SDCARD_PATH"
 for root in /mnt/sdcard /media/sdcard1 "$SDCARD_PATH"; do
     [ -n "$root" ] && [ -d "$root" ] || continue
     mv "$root/loong_upgrade" "$root/loong_upgrade.used" 2>/dev/null || true
 done
-mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
+mkdir -p "$SYSTEM_ROOT" "$ACTIVE_PLATFORM" "$USERDATA_PATH" "$SHARED_USERDATA_PATH" "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
 
@@ -606,6 +620,7 @@ if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
 fi
 log_msg "promoting managed apps"
 promote_managed_apps
+create_public_dirs
 
 write_release_json
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
@@ -689,7 +704,7 @@ def install_command(completion_action: str = "sleep") -> str:
         "[ -n \"$INSTALLER_ROOT\" ] || INSTALLER_ROOT=$SDCARD_PATH; "
         "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
         "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
-        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "INSTALL_LOG=$LOGS_PATH/umrk-launcher-install-command.log; "
@@ -708,7 +723,7 @@ def recovery_command(completion_action: str = "sleep") -> str:
         "PLATFORM=${PLATFORM:-mlp1}; "
         "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
         "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
-        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "mkdir -p $LOGS_PATH 2>/dev/null || true; "
         "RECOVERY_LOG=$LOGS_PATH/umrk-launcher-recovery-command.log; "
@@ -726,7 +741,7 @@ def probe_command() -> str:
         "PLATFORM=${PLATFORM:-mlp1}; "
         "SYSTEM_ROOT=$SDCARD_PATH/.system/leaf; "
         "PLATFORM_ROOT=$SYSTEM_ROOT/platforms/$PLATFORM; "
-        "USERDATA_PATH=${USERDATA_PATH:-$PLATFORM_ROOT/userdata}; "
+        "USERDATA_PATH=${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}; "
         "LOGS_PATH=${LOGS_PATH:-$USERDATA_PATH/logs}; "
         "INTERNAL_DATA=${UMRK_INTERNAL_DATA_PATH:-$PLATFORM_ROOT/state}; "
         "mkdir -p $LOGS_PATH $INTERNAL_DATA 2>/dev/null || true; "

@@ -6,7 +6,7 @@ STAMP="/loong/textures/.umrk-boot-installed"
 MODE="/loong/textures/.umrk-boot-mode"
 STOCK_DIR="/loong/textures/boot.stock"
 STOCK_CFG="/loong/textures/boot.cfg.stock.umrk"
-DISABLED="${UMRK_BOOT_SPLASH_DISABLED_PATH:-${UMRK_INTERNAL_DATA_PATH:-${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/.system/leaf/platforms/${PLATFORM:-mlp1}}}/state}/boot-splash-disabled}"
+DISABLED="${UMRK_BOOT_SPLASH_DISABLED_PATH:-${UMRK_INTERNAL_DATA_PATH:-${SDCARD_PATH:-/mnt/sdcard}/.umrk/${PLATFORM:-mlp1}}/boot-splash-disabled}"
 SRC="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-${SDCARD_PATH:-/mnt/sdcard}/.system/leaf/platforms/${PLATFORM:-mlp1}}}/boot-animation"
 
 remount_rw() {
