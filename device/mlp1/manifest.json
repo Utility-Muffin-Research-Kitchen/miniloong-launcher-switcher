@@ -7,6 +7,14 @@
   "info_dir_relpath": "info",
   "defaults_dir_relpath": "defaults",
   "theme_dir_relpath": "../../launcher/res/themes",
+  "managed_apps": [
+    "mlp1/SSHServer.pak",
+    "mlp1/Thing-File.pak",
+    "mlp1/CentralScrutinizer.pak",
+    "mlp1/Fugazi.pak",
+    "mlp1/Joe's Calibrage.pak",
+    "shared/RetroArch.pak"
+  ],
   "source_repos": {
     "launcher": "Jawaka",
     "switcher": "miniloong-launcher-switcher",
