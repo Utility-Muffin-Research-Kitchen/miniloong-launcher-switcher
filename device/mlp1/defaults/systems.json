@@ -815,8 +815,9 @@
       "ignore_file_names": [],
       "playlist_extensions": [],
       "m3u_generation": "none",
-      "default_core": "mupen64plus_next",
+      "default_core": "mupen64plus_standalone",
       "alternate_cores": [
+        "mupen64plus_next",
         "km_ludicrousn64_2k22_xtreme_amped",
         "parallel_n64",
         "km_parallel_n64_xtreme_amped_turbo",

@@ -741,6 +741,24 @@
       "status": "packaged"
     },
     {
+      "id": "mupen64plus_standalone",
+      "display_name": "Mupen64Plus Standalone",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": "Mupen64Plus Standalone",
+      "info_name": null,
+      "path": "emulators/mupen64plus/launch.sh",
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
       "id": "nestopia",
       "display_name": "Nestopia",
       "type": "retroarch",
