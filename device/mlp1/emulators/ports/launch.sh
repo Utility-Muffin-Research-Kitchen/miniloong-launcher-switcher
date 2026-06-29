@@ -107,7 +107,7 @@ write_retroarch_config() {
         printf '%s\n' 'config_save_on_exit = "false"'
         printf '%s\n' 'pause_nonactive = "false"'
         printf '%s\n' 'check_firmware_before_loading = "false"'
-        printf '%s\n' 'load_dummy_on_core_shutdown = "true"'
+        printf '%s\n' 'load_dummy_on_core_shutdown = "false"'
     } >>"$tmp_config"
 
     mv "$tmp_config" "$UMRK_RETROARCH_CONFIG"
