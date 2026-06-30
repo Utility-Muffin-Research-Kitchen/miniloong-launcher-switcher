@@ -3,16 +3,35 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 PLATFORM_ROOT="$(CDPATH= cd "$SCRIPT_DIR/../.." && pwd)"
-retroarch_link_created=0
+retroarch_wrapper_dir=""
 retroarch_wrapper=""
+retroarch_compat_wrapper=""
 ports_bind_mounted=0
+port_pid=""
+port_uses_setsid=0
 
 cleanup() {
-    if [ "$retroarch_link_created" = "1" ]; then
-        rm -f /usr/bin/retroarch 2>/dev/null || true
+    if [ -n "$port_pid" ] && kill -0 "$port_pid" 2>/dev/null; then
+        if [ "$port_uses_setsid" = "1" ]; then
+            kill -TERM "-$port_pid" 2>/dev/null || kill -TERM "$port_pid" 2>/dev/null || true
+            sleep 1
+            kill -KILL "-$port_pid" 2>/dev/null || kill -KILL "$port_pid" 2>/dev/null || true
+        else
+            kill -TERM "$port_pid" 2>/dev/null || true
+            sleep 1
+            kill -KILL "$port_pid" 2>/dev/null || true
+        fi
+    fi
+    # The PortMaster launcher must not create/remove files under /usr or other
+    # stock rootfs paths. RetroArch shims are scoped to /tmp and PATH only.
+    if [ -n "$retroarch_compat_wrapper" ]; then
+        rm -f "$retroarch_compat_wrapper" 2>/dev/null || true
     fi
     if [ -n "$retroarch_wrapper" ]; then
         rm -f "$retroarch_wrapper" 2>/dev/null || true
+    fi
+    if [ -n "$retroarch_wrapper_dir" ]; then
+        rmdir "$retroarch_wrapper_dir" 2>/dev/null || true
     fi
     if [ "$ports_bind_mounted" = "1" ]; then
         umount /roms/ports 2>/dev/null || true
@@ -55,6 +74,7 @@ roms_dir="$(CDPATH= cd "$ports_dir/.." && pwd)"
 export HOME="$pm_data"
 export XDG_DATA_HOME="$pm_data"
 export PORTMASTER_CONTROLFOLDER="${PORTMASTER_CONTROLFOLDER:-$pm_data/PortMaster}"
+export PORTMASTER_LEAF_PORT_LAYOUT_SCOPE=ports
 export PORTMASTER_ROMS_DIRECTORY="${PORTMASTER_ROMS_DIRECTORY:-${roms_dir#/}}"
 export PORTMASTER_LEAF_DEVICE_INFO=1
 export CFW_NAME="${CFW_NAME:-Leaf}"
@@ -114,8 +134,9 @@ write_retroarch_config() {
 }
 
 write_retroarch_wrapper() {
-    retroarch_wrapper="/tmp/leaf-portmaster-retroarch.$$"
-    cat >"$retroarch_wrapper" <<'SH'
+    wrapper_path="$1"
+    mkdir -p "$(dirname "$wrapper_path")"
+    cat >"$wrapper_path" <<'SH'
 #!/bin/sh
 set -eu
 
@@ -141,32 +162,52 @@ fi
 
 exec "$real_ra" --config "$config" "$@"
 SH
-    chmod 755 "$retroarch_wrapper"
+    chmod 755 "$wrapper_path"
 }
 
-if [ -x "$UMRK_RETROARCH_BIN" ] && [ ! -e /usr/bin/retroarch ]; then
-    write_retroarch_config
-    write_retroarch_wrapper
-    if ln -s "$retroarch_wrapper" /usr/bin/retroarch 2>/dev/null; then
-        retroarch_link_created=1
-    fi
-fi
-
-if [ ! -e /usr/bin/retroarch ]; then
+if [ ! -x "$UMRK_RETROARCH_BIN" ]; then
     echo "ports launcher: RetroArch missing: $UMRK_RETROARCH_BIN" >&2
     exit 69
 fi
 
-if [ -d "$ports_dir" ] && [ ! -d /roms/ports ]; then
-    mkdir -p /roms/ports 2>/dev/null || true
+write_retroarch_config
+retroarch_wrapper_dir="/tmp/leaf-portmaster-retroarch-bin.$$"
+retroarch_wrapper="$retroarch_wrapper_dir/retroarch"
+write_retroarch_wrapper "$retroarch_wrapper"
+export PATH="$retroarch_wrapper_dir:${PATH:-/usr/bin:/usr/sbin:/bin:/sbin}"
+
+if [ -L /usr/bin/retroarch ]; then
+    retroarch_target="$(readlink /usr/bin/retroarch 2>/dev/null || true)"
+    case "$retroarch_target" in
+        /tmp/leaf-portmaster-retroarch.*)
+            if [ ! -e "$retroarch_target" ]; then
+                retroarch_compat_wrapper="$retroarch_target"
+                write_retroarch_wrapper "$retroarch_compat_wrapper"
+            fi
+            ;;
+    esac
 fi
 
-if [ -d "$ports_dir" ] &&
+if [ -d "$ports_dir" ] && [ -d /roms/ports ] &&
    ! awk '$2 == "/roms/ports" { found = 1 } END { exit found ? 0 : 1 }' /proc/mounts; then
     if mount --bind "$ports_dir" /roms/ports 2>/dev/null; then
         ports_bind_mounted=1
     fi
+elif [ -d "$ports_dir" ] && [ ! -d /roms/ports ]; then
+    echo "ports launcher: /roms/ports mountpoint absent; not creating rootfs paths" >&2
 fi
 
 cd "$ports_dir"
-/usr/bin/bash "$port_script"
+if command -v setsid >/dev/null 2>&1; then
+    setsid /usr/bin/bash "$port_script" &
+    port_uses_setsid=1
+else
+    /usr/bin/bash "$port_script" &
+fi
+port_pid="$!"
+set +e
+wait "$port_pid"
+status="$?"
+set -e
+port_pid=""
+exit "$status"
