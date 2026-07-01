@@ -44,6 +44,28 @@ if [ -f "$PLATFORM_ROOT/launcher/env.sh" ]; then
     . "$PLATFORM_ROOT/launcher/env.sh"
 fi
 
+resolve_mlp1_virtual_gamepad() {
+    awk '
+        /^N: Name="Loong Gamepad"/ {
+            name = 1
+        }
+        /^S: Sysfs=\/devices\/virtual\/input\// {
+            virtual = 1
+        }
+        /^H: Handlers=/ {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^event[0-9]+$/) {
+                    event = $i
+                }
+            }
+        }
+        name && virtual && event != "" {
+            print "/dev/input/" event
+            exit
+        }
+    ' /proc/bus/input/devices 2>/dev/null
+}
+
 port_script="${1:-${JAWAKA_GAME_ROM_ABS:-}}"
 if [ -z "$port_script" ]; then
     echo "ports launcher: missing port script path" >&2
@@ -58,6 +80,18 @@ esac
 if [ ! -f "$port_script" ]; then
     echo "ports launcher: script not found: $port_script" >&2
     exit 66
+fi
+
+port_shell="${PORTMASTER_BASH:-}"
+if [ -z "$port_shell" ]; then
+    port_shell="$(command -v bash 2>/dev/null || true)"
+fi
+if [ -z "$port_shell" ]; then
+    port_shell="/usr/bin/bash"
+fi
+if [ ! -x "$port_shell" ]; then
+    echo "ports launcher: bash not found: $port_shell" >&2
+    exit 69
 fi
 
 case "$port_script" in
@@ -94,6 +128,25 @@ export ANALOG_STICKS="${ANALOG_STICKS:-2}"
 export ANALOGSTICKS="${ANALOGSTICKS:-2}"
 export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
 export UMRK_RETROARCH_CONFIG="$pm_data/.config/retroarch/retroarch.cfg"
+
+if [ "${PLATFORM:-mlp1}" = "mlp1" ] && [ -z "${SDL_JOYSTICK_DEVICE:-}" ]; then
+    if [ -n "${JAWAKA_INPUT_VIRTUAL_EVENT:-}" ] &&
+       [ -e "$JAWAKA_INPUT_VIRTUAL_EVENT" ]; then
+        MLP1_VIRTUAL_GAMEPAD="$JAWAKA_INPUT_VIRTUAL_EVENT"
+    elif [ -n "${JAWAKA_RETROARCH_VIRTUAL_EVENT:-}" ] &&
+         [ -e "$JAWAKA_RETROARCH_VIRTUAL_EVENT" ]; then
+        MLP1_VIRTUAL_GAMEPAD="$JAWAKA_RETROARCH_VIRTUAL_EVENT"
+    else
+        MLP1_VIRTUAL_GAMEPAD="$(resolve_mlp1_virtual_gamepad || true)"
+    fi
+
+    if [ -n "$MLP1_VIRTUAL_GAMEPAD" ] && [ -e "$MLP1_VIRTUAL_GAMEPAD" ]; then
+        export SDL_JOYSTICK_DEVICE="$MLP1_VIRTUAL_GAMEPAD"
+        echo "[ports] using calibrated Jawaka virtual gamepad: $SDL_JOYSTICK_DEVICE"
+    else
+        echo "[ports] calibrated Jawaka virtual gamepad not found; using SDL default joystick scan"
+    fi
+fi
 
 write_retroarch_config() {
     mkdir -p "$pm_data/.config/retroarch" "$pm_data/BIOS" "$pm_data/saves" \
@@ -199,10 +252,10 @@ fi
 
 cd "$ports_dir"
 if command -v setsid >/dev/null 2>&1; then
-    setsid /usr/bin/bash "$port_script" &
+    setsid "$port_shell" "$port_script" &
     port_uses_setsid=1
 else
-    /usr/bin/bash "$port_script" &
+    "$port_shell" "$port_script" &
 fi
 port_pid="$!"
 set +e
