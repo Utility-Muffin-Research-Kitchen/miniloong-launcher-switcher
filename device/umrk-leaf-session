@@ -581,7 +581,10 @@ export_leaf_env() {
     export JAWAKA_SDCARD_ROOT="${JAWAKA_SDCARD_ROOT:-$SD_MOUNT}"
     export JAWAKA_RETROARCH_BIN="${JAWAKA_RETROARCH_BIN:-$UMRK_RETROARCH_BIN}"
     export JAWAKA_RETROARCH_CORES_DIR="${JAWAKA_RETROARCH_CORES_DIR:-$CORES_PATH}"
-    export JAWAKA_THEME="${JAWAKA_THEME:-Jawaka-Tabs}"
+    # Home layout is DB-driven (Settings > Appearance > Layout > Home Layout):
+    # the launcher resolves theme_name from its own DB, so don't force a default
+    # here — only pass JAWAKA_THEME through if the environment already set it.
+    [ -n "$JAWAKA_THEME" ] && export JAWAKA_THEME
     [ -d "$BUNDLE/lib" ] && export LD_LIBRARY_PATH="$BUNDLE/lib:${LD_LIBRARY_PATH:-}"
 }
 
