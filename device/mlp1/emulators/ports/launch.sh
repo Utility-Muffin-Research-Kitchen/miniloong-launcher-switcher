@@ -66,6 +66,51 @@ resolve_mlp1_virtual_gamepad() {
     ' /proc/bus/input/devices 2>/dev/null
 }
 
+find_optional_portmaster_runtime_prepare() {
+    if [ -n "${PORTMASTER_RUNTIME_PREPARE:-}" ]; then
+        [ -x "$PORTMASTER_RUNTIME_PREPARE" ] && printf '%s\n' "$PORTMASTER_RUNTIME_PREPARE"
+        return 0
+    fi
+
+    app_roots="${APPS_PATHS:-}"
+    if [ -z "$app_roots" ]; then
+        app_roots="${APPS_PATH:-${SDCARD_PATH:-/mnt/sdcard}/Apps}"
+    fi
+
+    old_ifs="$IFS"
+    IFS=:
+    set -- $app_roots
+    IFS="$old_ifs"
+
+    for app_root in "$@"; do
+        [ -n "$app_root" ] || continue
+        for rel in \
+            "${PLATFORM:-mlp1}/PortMaster.pak/scripts/prepare-port-runtime.sh" \
+            "shared/PortMaster.pak/scripts/prepare-port-runtime.sh"; do
+            candidate="$app_root/$rel"
+            if [ -x "$candidate" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done
+    done
+
+    return 0
+}
+
+run_optional_portmaster_runtime_prepare() {
+    [ "${LEAF_PM_PORT_RUNTIME:-1}" = "0" ] && return 0
+
+    prepare_script="$(find_optional_portmaster_runtime_prepare | head -n 1)"
+    [ -n "$prepare_script" ] || return 0
+
+    echo "[ports] preparing optional PortMaster runtime"
+    PORTMASTER_PORT_SCRIPT="$port_script" \
+    PORTMASTER_PORTS_DIR="$ports_dir" \
+    PORTMASTER_MLP1_DATA_DIR="$pm_data" \
+    "$prepare_script" || echo "[ports] optional PortMaster runtime prep failed: $prepare_script"
+}
+
 port_script="${1:-${JAWAKA_GAME_ROM_ABS:-}}"
 if [ -z "$port_script" ]; then
     echo "ports launcher: missing port script path" >&2
@@ -128,6 +173,8 @@ export ANALOG_STICKS="${ANALOG_STICKS:-2}"
 export ANALOGSTICKS="${ANALOGSTICKS:-2}"
 export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
 export UMRK_RETROARCH_CONFIG="$pm_data/.config/retroarch/retroarch.cfg"
+
+run_optional_portmaster_runtime_prepare
 
 if [ "${PLATFORM:-mlp1}" = "mlp1" ] && [ -z "${SDL_JOYSTICK_DEVICE:-}" ]; then
     if [ -n "${JAWAKA_INPUT_VIRTUAL_EVENT:-}" ] &&
