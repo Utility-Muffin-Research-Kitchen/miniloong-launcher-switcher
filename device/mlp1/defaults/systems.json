@@ -74,6 +74,7 @@
       ],
       "playlist_extensions": [],
       "m3u_generation": "none",
+      "name_map": true,
       "default_core": "fbneo",
       "alternate_cores": [
         "mame2003_plus",
@@ -619,6 +620,7 @@
       ],
       "playlist_extensions": [],
       "m3u_generation": "none",
+      "name_map": true,
       "default_core": "mame",
       "alternate_cores": [
         "mame2003_plus"
@@ -641,6 +643,7 @@
       "ignore_file_names": [],
       "playlist_extensions": [],
       "m3u_generation": "none",
+      "name_map": true,
       "default_core": "mame2003_plus",
       "alternate_cores": [],
       "rom_root": "Roms/MAME2003",
@@ -661,6 +664,7 @@
       "ignore_file_names": [],
       "playlist_extensions": [],
       "m3u_generation": "none",
+      "name_map": true,
       "default_core": "mame2010",
       "alternate_cores": [],
       "rom_root": "Roms/MAME2010",
@@ -883,6 +887,7 @@
       ],
       "playlist_extensions": [],
       "m3u_generation": "none",
+      "name_map": true,
       "default_core": "fbneo",
       "alternate_cores": [
         "fbalpha2012"
