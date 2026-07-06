@@ -846,7 +846,7 @@
       "platforms": [
         "mlp1"
       ],
-      "status": "packaged"
+      "status": "missing"
     },
     {
       "id": "ppsspp",
