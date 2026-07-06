@@ -174,6 +174,13 @@ export ANALOGSTICKS="${ANALOGSTICKS:-2}"
 export UMRK_RETROARCH_BIN="${UMRK_RETROARCH_BIN:-$PLATFORM_ROOT/bin/retroarch}"
 export UMRK_RETROARCH_CONFIG="$pm_data/.config/retroarch/retroarch.cfg"
 
+case "${JAWAKA_DIRECT_DRM:-0}" in
+    1|true|yes|TRUE|YES)
+        export LEAF_PM_GOTHIC_MACHISMO_VULKAN_ROTATE="${LEAF_PM_GOTHIC_MACHISMO_VULKAN_ROTATE:-1}"
+        export LEAF_PM_GOTHIC_MACHISMO_VULKAN_ROTATE_STOP_DISPLAY="${LEAF_PM_GOTHIC_MACHISMO_VULKAN_ROTATE_STOP_DISPLAY:-0}"
+        ;;
+esac
+
 run_optional_portmaster_runtime_prepare
 
 if [ "${PLATFORM:-mlp1}" = "mlp1" ] && [ -z "${SDL_JOYSTICK_DEVICE:-}" ]; then
