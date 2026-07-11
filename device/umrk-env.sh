@@ -85,6 +85,8 @@ umrk_env_default CHEATS_PATH "$SDCARD_PATH/Cheats"
 umrk_env_default CORES_PATH "$SYSTEM_PATH/cores"
 umrk_env_default INFO_PATH "$SYSTEM_PATH/info"
 umrk_env_default UMRK_RUNTIME_PATH "$_umrk_default_runtime"
+umrk_env_default UMRK_DAEMON_SOCKET "$UMRK_RUNTIME_PATH/jawakad.sock"
+umrk_env_default JAWAKA_SOCKET_PATH "$UMRK_DAEMON_SOCKET"
 
 case "$PLATFORM" in
     mlp1)
