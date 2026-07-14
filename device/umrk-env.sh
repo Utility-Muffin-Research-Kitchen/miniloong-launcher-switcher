@@ -76,6 +76,7 @@ umrk_env_default SHARED_USERDATA_PATH "$SDCARD_PATH/.userdata/shared"
 umrk_env_default LOGS_PATH "$USERDATA_PATH/logs"
 umrk_env_default ROMS_PATH "$SDCARD_PATH/Roms"
 umrk_env_default IMAGES_PATH "$SDCARD_PATH/Images"
+umrk_env_default MUSIC_PATH "$SDCARD_PATH/Music"
 umrk_env_default APPS_PATH "$SDCARD_PATH/Apps"
 umrk_env_default BIOS_PATH "$SDCARD_PATH/BIOS"
 umrk_env_default SAVES_PATH "$SDCARD_PATH/Saves"
@@ -84,6 +85,8 @@ umrk_env_default CHEATS_PATH "$SDCARD_PATH/Cheats"
 umrk_env_default CORES_PATH "$SYSTEM_PATH/cores"
 umrk_env_default INFO_PATH "$SYSTEM_PATH/info"
 umrk_env_default UMRK_RUNTIME_PATH "$_umrk_default_runtime"
+umrk_env_default UMRK_DAEMON_SOCKET "$UMRK_RUNTIME_PATH/jawakad.sock"
+umrk_env_default JAWAKA_SOCKET_PATH "$UMRK_DAEMON_SOCKET"
 
 case "$PLATFORM" in
     mlp1)
@@ -92,6 +95,7 @@ case "$PLATFORM" in
         _umrk_sdcard_paths="$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH"
         _umrk_roms_paths="$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms"
         _umrk_images_paths="$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images"
+        _umrk_music_paths="$MUSIC_PATH:$UMRK_SECONDARY_SDCARD_PATH/Music"
         _umrk_apps_paths="$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps"
         _umrk_bios_paths="$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS"
         _umrk_saves_paths="$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves"
@@ -102,6 +106,7 @@ case "$PLATFORM" in
         _umrk_sdcard_paths="$SDCARD_PATH"
         _umrk_roms_paths="$ROMS_PATH"
         _umrk_images_paths="$IMAGES_PATH"
+        _umrk_music_paths="$MUSIC_PATH"
         _umrk_apps_paths="$APPS_PATH"
         _umrk_bios_paths="$BIOS_PATH"
         _umrk_saves_paths="$SAVES_PATH"
@@ -113,6 +118,7 @@ esac
 umrk_env_default SDCARD_PATHS "$_umrk_sdcard_paths"
 umrk_env_default ROMS_PATHS "$_umrk_roms_paths"
 umrk_env_default IMAGES_PATHS "$_umrk_images_paths"
+umrk_env_default MUSIC_PATHS "$_umrk_music_paths"
 umrk_env_default APPS_PATHS "$_umrk_apps_paths"
 umrk_env_default BIOS_PATHS "$_umrk_bios_paths"
 umrk_env_default SAVES_PATHS "$_umrk_saves_paths"
@@ -163,4 +169,5 @@ unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel
 unset _umrk_default_runtime _umrk_default_internal_rel
 unset _umrk_sdcard_paths _umrk_roms_paths _umrk_images_paths _umrk_apps_paths
-unset _umrk_bios_paths _umrk_saves_paths _umrk_states_paths _umrk_cheats_paths
+unset _umrk_music_paths _umrk_bios_paths _umrk_saves_paths _umrk_states_paths
+unset _umrk_cheats_paths
