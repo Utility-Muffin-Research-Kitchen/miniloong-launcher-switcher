@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "platform": "mlp1",
   "systems": [
     {
@@ -50,7 +50,8 @@
       ],
       "rom_root": "Roms/32X",
       "image_root": "Images/32X",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "ARCADE",
@@ -127,7 +128,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/ATARI2600",
       "image_root": "Images/ATARI2600",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "stella2014"
     },
     {
       "id": "COLECO",
@@ -204,7 +206,8 @@
       ],
       "rom_root": "Roms/DC",
       "image_root": "Images/DC",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "flycast"
     },
     {
       "id": "DOS",
@@ -260,7 +263,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/DOS",
       "image_root": "Images/DOS",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "dosbox_pure"
     },
     {
       "id": "EASYRPG",
@@ -293,7 +297,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/EASYRPG",
       "image_root": "Images/EASYRPG",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "easyrpg"
     },
     {
       "id": "FC",
@@ -334,7 +339,8 @@
       ],
       "rom_root": "Roms/NES",
       "image_root": "Images/NES",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "fceumm"
     },
     {
       "id": "FDS",
@@ -370,7 +376,8 @@
       "image_root": "Images/FDS",
       "bios_notes": [
         "disksys.rom (required)"
-      ]
+      ],
+      "legacy_flat_core": "fceumm"
     },
     {
       "id": "GB",
@@ -455,7 +462,8 @@
       ],
       "rom_root": "Roms/GBA",
       "image_root": "Images/GBA",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mgba"
     },
     {
       "id": "GBC",
@@ -534,7 +542,8 @@
       ],
       "rom_root": "Roms/GG",
       "image_root": "Images/GG",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "GW",
@@ -564,7 +573,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/GW",
       "image_root": "Images/GW",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "gw"
     },
     {
       "id": "LYNX",
@@ -595,7 +605,8 @@
       ],
       "rom_root": "Roms/LYNX",
       "image_root": "Images/LYNX",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "handy"
     },
     {
       "id": "MAME",
@@ -648,7 +659,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/MAME2003",
       "image_root": "Images/MAME2003",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mame2003_plus"
     },
     {
       "id": "MAME2010",
@@ -669,7 +681,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/MAME2010",
       "image_root": "Images/MAME2010",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mame2010"
     },
     {
       "id": "MD",
@@ -719,7 +732,8 @@
       ],
       "rom_root": "Roms/GENESIS",
       "image_root": "Images/GENESIS",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "MD32X",
@@ -739,7 +753,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/MD32X",
       "image_root": "Images/MD32X",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "MS",
@@ -789,7 +804,8 @@
       ],
       "rom_root": "Roms/MS",
       "image_root": "Images/MS",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "N64",
@@ -829,7 +845,8 @@
       ],
       "rom_root": "Roms/N64",
       "image_root": "Images/N64",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mupen64plus_next"
     },
     {
       "id": "NDS",
@@ -931,7 +948,8 @@
       ],
       "rom_root": "Roms/NGP",
       "image_root": "Images/NGP",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mednafen_ngp"
     },
     {
       "id": "NGPC",
@@ -965,7 +983,8 @@
       ],
       "rom_root": "Roms/NGPC",
       "image_root": "Images/NGPC",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mednafen_ngp"
     },
     {
       "id": "PCE",
@@ -1010,7 +1029,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/PCE",
       "image_root": "Images/PCE",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mednafen_pce_fast"
     },
     {
       "id": "PCECD",
@@ -1051,7 +1071,8 @@
       "image_root": "Images/PCECD",
       "bios_notes": [
         "syscard3.pce (required)"
-      ]
+      ],
+      "legacy_flat_core": "mednafen_pce_fast"
     },
     {
       "id": "PICO8",
@@ -1084,7 +1105,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/PICO8",
       "image_root": "Images/PICO8",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "fake08"
     },
     {
       "id": "PORTS",
@@ -1235,7 +1257,8 @@
       ],
       "rom_root": "Roms/SATURN",
       "image_root": "Images/SATURN",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "yabasanshiro"
     },
     {
       "id": "SEGACD",
@@ -1280,7 +1303,8 @@
         "bios_CD_U.bin (US)",
         "bios_CD_E.bin (Europe)",
         "bios_CD_J.bin (Japan)"
-      ]
+      ],
+      "legacy_flat_core": "genesis_plus_gx"
     },
     {
       "id": "SEVENTYEIGHTHUNDRED",
@@ -1315,7 +1339,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/A7800",
       "image_root": "Images/A7800",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "prosystem"
     },
     {
       "id": "SFC",
@@ -1378,7 +1403,8 @@
       ],
       "rom_root": "Roms/SNES",
       "image_root": "Images/SNES",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "snes9x"
     },
     {
       "id": "VB",
@@ -1474,7 +1500,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/WS",
       "image_root": "Images/WS",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mednafen_wswan"
     },
     {
       "id": "WSC",
@@ -1510,7 +1537,8 @@
       "alternate_cores": [],
       "rom_root": "Roms/WSC",
       "image_root": "Images/WSC",
-      "bios_notes": []
+      "bios_notes": [],
+      "legacy_flat_core": "mednafen_wswan"
     }
   ]
 }
