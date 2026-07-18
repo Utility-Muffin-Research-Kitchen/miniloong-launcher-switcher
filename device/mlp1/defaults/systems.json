@@ -1210,7 +1210,9 @@
       "playlist_extensions": [],
       "m3u_generation": "none",
       "default_core": "ppsspp",
-      "alternate_cores": [],
+      "alternate_cores": [
+        "ppsspp_gles"
+      ],
       "rom_root": "Roms/PSP",
       "image_root": "Images/PSP",
       "bios_notes": []
