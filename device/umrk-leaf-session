@@ -488,7 +488,7 @@ stop_audio_spk_keeper() {
 
 kill_stale_custom_launcher() {
     found=0
-    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch PPSSPPSDL; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         if [ -n "$pids" ]; then
             log_msg "stopping stale $name pids=$pids"
@@ -510,13 +510,34 @@ kill_stale_custom_launcher() {
 
     sleep 1
 
-    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch PPSSPPSDL; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         if [ -n "$pids" ]; then
             log_msg "force stopping stale $name pids=$pids"
             kill -9 $pids 2>/dev/null || true
         fi
     done
+}
+
+recover_leaf_daemon_crash() {
+    [ ! -f "$CLEAN_EXIT_SENTINEL" ] || return 0
+
+    log_msg "unclean Leaf daemon exit; recovering managed children and display"
+    kill_stale_custom_launcher
+
+    if ! pidof weston >/dev/null 2>&1; then
+        log_msg "unclean Leaf daemon exit left Weston stopped; starting compositor"
+        /etc/init.d/S49weston start >>"$LOG" 2>&1 || true
+        i=0
+        while [ "$i" -lt 50 ]; do
+            pidof weston >/dev/null 2>&1 && break
+            sleep .1
+            i=$((i + 1))
+        done
+        if ! pidof weston >/dev/null 2>&1; then
+            log_msg "unclean Leaf daemon recovery could not restart Weston"
+        fi
+    fi
 }
 
 export_leaf_env() {
@@ -876,6 +897,7 @@ leaf_start() {
         "$BUNDLE_BIN" >>"$LOG" 2>&1
         status=$?
         log_msg "Leaf launcher exited status=$status"
+        recover_leaf_daemon_crash
 
         if [ -f "$EXIT_TO_STOCK_SENTINEL" ]; then
             rm -f "$EXIT_TO_STOCK_SENTINEL"
