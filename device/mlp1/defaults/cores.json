@@ -258,7 +258,7 @@
       "config_folder": "Flycast Standalone",
       "info_name": null,
       "path": "emulators/flycast/launch.sh",
-      "supports_menu": false,
+      "supports_menu": true,
       "supports_savestate": false,
       "supports_disk_control": false,
       "needs_swap": false,
