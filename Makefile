@@ -13,6 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
+        runtime-env-fixtures \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
         adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs \
@@ -29,8 +30,12 @@ help:
 	@echo "  make adb-enable-marker | adb-disable-marker"
 	@echo "  make adb-restart-loong | adb-tail-logs"
 	@echo "  make adb-install-wrapper | adb-uninstall-wrapper  compatibility aliases for init-hook install/remove"
+	@echo "  make runtime-env-fixtures              validate configured dual-source exports"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
+
+runtime-env-fixtures:
+	@tools/runtime-env-fixtures.sh
 
 # Generate the SD-root OTA install payload around an assembled launcher bundle.
 sd-payload:

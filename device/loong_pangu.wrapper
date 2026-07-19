@@ -76,28 +76,24 @@ set_active_launcher_sd() {
     export UMRK_INTERNAL_DATA_PATH="$active/.umrk/$PLATFORM"
     export UMRK_MARKER_PATH="$SYSTEM_PATH/enabled"
 
-    if [ -n "$alternate" ] && [ "$alternate" != "$active" ] &&
-       mountpoint_is_mounted "$alternate"; then
-        export UMRK_SECONDARY_SDCARD_PATH="$alternate"
-        export SDCARD_PATHS="$active:$alternate"
-        export ROMS_PATHS="$active/Roms:$alternate/Roms"
-        export IMAGES_PATHS="$active/Images:$alternate/Images"
-        export APPS_PATHS="$active/Apps:$alternate/Apps"
-        export BIOS_PATHS="$active/BIOS:$alternate/BIOS"
-        export SAVES_PATHS="$active/Saves:$alternate/Saves"
-        export STATES_PATHS="$active/States:$alternate/States"
-        export CHEATS_PATHS="$active/Cheats:$alternate/Cheats"
-    else
-        export UMRK_SECONDARY_SDCARD_PATH="$SECONDARY_SD_MOUNT"
-        export SDCARD_PATHS="$active"
-        export ROMS_PATHS="$active/Roms"
-        export IMAGES_PATHS="$active/Images"
-        export APPS_PATHS="$active/Apps"
-        export BIOS_PATHS="$active/BIOS"
-        export SAVES_PATHS="$active/Saves"
-        export STATES_PATHS="$active/States"
-        export CHEATS_PATHS="$active/Cheats"
+    configured_secondary="$alternate"
+    if [ -z "$configured_secondary" ] || [ "$configured_secondary" = "$active" ]; then
+        configured_secondary="$SECONDARY_SD_MOUNT"
     fi
+    if [ -z "$configured_secondary" ] || [ "$configured_secondary" = "$active" ]; then
+        log_msg "cannot publish distinct configured Secondary SD root"
+        return 1
+    fi
+    export UMRK_SECONDARY_SDCARD_PATH="$configured_secondary"
+    export SDCARD_PATHS="$active:$configured_secondary"
+    export ROMS_PATHS="$active/Roms:$configured_secondary/Roms"
+    export IMAGES_PATHS="$active/Images:$configured_secondary/Images"
+    export MUSIC_PATHS="$active/Music:$configured_secondary/Music"
+    export APPS_PATHS="$active/Apps:$configured_secondary/Apps"
+    export BIOS_PATHS="$active/BIOS:$configured_secondary/BIOS"
+    export SAVES_PATHS="$active/Saves:$configured_secondary/Saves"
+    export STATES_PATHS="$active/States:$configured_secondary/States"
+    export CHEATS_PATHS="$active/Cheats:$configured_secondary/Cheats"
 
     ENV_FILE="${UMRK_ENV_FILE:-$UMRK_LAUNCHER_PATH/env.sh}"
     if [ -f "$ENV_FILE" ]; then
@@ -532,6 +528,7 @@ export LOGS_PATH="${LOGS_PATH:-$LOG_DIR}"
 export UMRK_INTERNAL_DATA_PATH="${UMRK_INTERNAL_DATA_PATH:-$INTERNAL_DATA}"
 export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
 export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
+export MUSIC_PATH="${MUSIC_PATH:-$SD_MOUNT/Music}"
 export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
 export BIOS_PATH="${BIOS_PATH:-$SD_MOUNT/BIOS}"
 export SAVES_PATH="${SAVES_PATH:-$SD_MOUNT/Saves}"
@@ -544,6 +541,7 @@ if [ "$PLATFORM" = "mlp1" ]; then
     export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH}"
     export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms}"
     export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images}"
+    export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH:$UMRK_SECONDARY_SDCARD_PATH/Music}"
     export APPS_PATHS="${APPS_PATHS:-$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps}"
     export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS}"
     export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves}"
@@ -553,6 +551,7 @@ else
     export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH}"
     export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH}"
     export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH}"
+    export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH}"
     export APPS_PATHS="${APPS_PATHS:-$APPS_PATH}"
     export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH}"
     export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH}"
