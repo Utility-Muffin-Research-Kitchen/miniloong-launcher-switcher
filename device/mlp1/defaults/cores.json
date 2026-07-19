@@ -250,6 +250,25 @@
       "status": "packaged"
     },
     {
+      "id": "flycast_standalone",
+      "display_name": "Flycast Standalone",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": "Flycast Standalone",
+      "info_name": null,
+      "path": "emulators/flycast/launch.sh",
+      "supports_menu": false,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "requires_direct_drm": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
       "id": "gambatte",
       "display_name": "Gambatte",
       "type": "retroarch",
