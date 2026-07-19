@@ -200,8 +200,9 @@
         "m3u"
       ],
       "m3u_generation": "manual",
-      "default_core": "flycast",
+      "default_core": "flycast_standalone",
       "alternate_cores": [
+        "flycast",
         "km_flycast_xtreme"
       ],
       "rom_root": "Roms/DC",
