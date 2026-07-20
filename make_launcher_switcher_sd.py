@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 
@@ -14,6 +15,11 @@ DEFAULT_PROBE_CONTENT = b"miniloong launcher switcher probe\n"
 INSTALLER_NAME = "umrk-launcher-install.sh"
 RECOVERY_NAME = "umrk-launcher-recovery.sh"
 MLP1_SDCARD_PATH = "/mnt/sdcard"
+RELEASE_VERSION_RE = re.compile(
+    r"[0-9]+\.[0-9]+\.[0-9]+"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
 
 # Platform payload entries the managed installer promotes from
 # releases/<id>/platforms/<platform>/ into the active platform dir. The
@@ -164,6 +170,16 @@ def validate_release_id(value: str) -> None:
         raise SystemExit("--release-id must not contain whitespace")
     if any(ch in ':*?"<>|' or ord(ch) < 32 for ch in value):
         raise SystemExit("--release-id contains characters unsafe for FAT32")
+
+
+def validate_release_version(value: str) -> None:
+    if not RELEASE_VERSION_RE.fullmatch(value or ""):
+        raise SystemExit(
+            "--release-version must be a semantic version such as 0.7.0 "
+            "or 0.7.0-save-isolation-ota1"
+        )
+    if any(int(part) > 9999 for part in value.split("-", 1)[0].split("+", 1)[0].split(".")):
+        raise SystemExit("--release-version component exceeds 9999")
 
 
 def build_installer_script(require_adb_pinned: bool = True) -> str:
@@ -339,8 +355,14 @@ def validate_platform_payload_coverage(sd_root: Path, release_id: str,
             "(add them to PROMOTED_PLATFORM_DIRS/FILES in make_launcher_switcher_sd.py)")
 
 
-def build_managed_installer_script(release_id: str) -> str:
+def build_managed_installer_script(
+    release_id: str, release_version: str | None = None
+) -> str:
     validate_release_id(release_id)
+    if release_version is None:
+        release_version = release_id
+    else:
+        validate_release_version(release_version)
     hook = read_required(HOOK_PATH).rstrip()
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
@@ -349,6 +371,7 @@ set -u
 
 PLATFORM="${PLATFORM:-mlp1}"
 RELEASE_ID="__RELEASE_ID__"
+RELEASE_VERSION="__RELEASE_VERSION__"
 REQUESTED_SDCARD_PATH="${SDCARD_PATH:-__MLP1_SDCARD_PATH__}"
 
 resolve_sdcard_path() {
@@ -556,7 +579,7 @@ write_release_json() {
   "schema": 1,
   "product": "leaf",
   "platform": "$PLATFORM",
-  "version": "$RELEASE_ID",
+  "version": "$RELEASE_VERSION",
   "release_id": "$RELEASE_ID",
   "installed_at": "$installed_at",
   "source": "managed-install"
@@ -649,6 +672,7 @@ echo "managed Leaf install complete"
         template
         .replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
         .replace("__RELEASE_ID__", release_id)
+        .replace("__RELEASE_VERSION__", release_version)
         .replace("__PROMOTED_DIRS__", " ".join(PROMOTED_PLATFORM_DIRS))
         .replace("__PROMOTED_FILES__", " ".join(PROMOTED_PLATFORM_FILES))
         .replace("__HOOK__", hook)
@@ -789,6 +813,14 @@ def parse_args() -> argparse.Namespace:
         help="Leaf release id to promote in managed-install mode.",
     )
     parser.add_argument(
+        "--release-version",
+        default=None,
+        help=(
+            "Semantic Leaf version written to release.json in managed-install "
+            "mode. Defaults to --release-id for compatibility."
+        ),
+    )
+    parser.add_argument(
         "--no-require-adb-pinned",
         action="store_true",
         help="Skip the ADB-pinned preflight for installer generation.",
@@ -850,6 +882,8 @@ def write_payload(args: argparse.Namespace) -> None:
         if args.release_id is None:
             raise SystemExit("--release-id is required for --mode managed-install")
         validate_release_id(args.release_id)
+        if args.release_version is not None:
+            validate_release_version(args.release_version)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -891,7 +925,11 @@ def write_payload(args: argparse.Namespace) -> None:
         )
     elif args.command is None and args.mode == "managed-install":
         validate_platform_payload_coverage(output_dir, args.release_id)
-        write_text_if_allowed(installer_path, build_managed_installer_script(args.release_id), args.force)
+        write_text_if_allowed(
+            installer_path,
+            build_managed_installer_script(args.release_id, args.release_version),
+            args.force,
+        )
     elif args.command is None and args.mode == "recovery":
         write_text_if_allowed(recovery_path, build_recovery_script(), args.force)
         if installer_path.exists() and args.force:

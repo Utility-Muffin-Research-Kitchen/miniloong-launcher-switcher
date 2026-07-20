@@ -84,6 +84,12 @@ then re-enables the Leaf marker. **There is no migration step** - it is a clean
 cutover that leaves existing `.userdata`/`.umrk`/public content untouched, so a
 re-extracted ZIP is an in-place upgrade.
 
+Managed-install generation accepts a separate `--release-version`. Leaf uses
+this to write the stable semantic compatibility version to
+`release.json.version` while retaining the date/SHA build identity in
+`release.json.release_id`. Calls that omit the option retain the historical
+behavior of using `--release-id` for both fields.
+
 ## Build an End-User Install ZIP
 
 The preferred way to build a device installation package is from the sibling
