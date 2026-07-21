@@ -152,6 +152,7 @@ ports_dir="$(CDPATH= cd "$(dirname "$port_script")" && pwd)"
 roms_dir="$(CDPATH= cd "$ports_dir/.." && pwd)"
 export HOME="$pm_data"
 export XDG_DATA_HOME="$pm_data"
+export PORTMASTER_PORTS_DIR="${PORTMASTER_PORTS_DIR:-$ports_dir}"
 export PORTMASTER_CONTROLFOLDER="${PORTMASTER_CONTROLFOLDER:-$pm_data/PortMaster}"
 export PORTMASTER_LEAF_PORT_LAYOUT_SCOPE=ports
 export PORTMASTER_ROMS_DIRECTORY="${PORTMASTER_ROMS_DIRECTORY:-${roms_dir#/}}"
