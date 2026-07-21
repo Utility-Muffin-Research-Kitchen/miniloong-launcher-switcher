@@ -2,6 +2,7 @@
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -52,6 +53,17 @@ class ReleaseVersionTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(SystemExit):
                     MODULE.validate_release_version(value)
+
+    def test_platform_payload_promotes_runtime_directory(self):
+        with tempfile.TemporaryDirectory() as raw:
+            sd_root = Path(raw)
+            runtime = (
+                sd_root
+                / ".system/leaf/releases/candidate/platforms/mlp1/runtime"
+            )
+            runtime.mkdir(parents=True)
+            MODULE.validate_platform_payload_coverage(sd_root, "candidate")
+        self.assertIn("runtime", MODULE.PROMOTED_PLATFORM_DIRS)
 
 
 if __name__ == "__main__":

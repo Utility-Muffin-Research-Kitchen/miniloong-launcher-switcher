@@ -36,6 +36,7 @@ PROMOTED_PLATFORM_DIRS = (
     "autoconfig",
     "boot-animation",
     "emulators",
+    "runtime",
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
