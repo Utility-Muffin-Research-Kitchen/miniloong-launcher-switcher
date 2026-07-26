@@ -565,6 +565,7 @@ export_leaf_env() {
     export CHEATS_PATH="${CHEATS_PATH:-$SD_MOUNT/Cheats}"
     export CORES_PATH="${CORES_PATH:-$PLATFORM_ROOT/cores}"
     export INFO_PATH="${INFO_PATH:-$PLATFORM_ROOT/info}"
+    export UMRK_RETROARCH_SHADERS_DIR="${UMRK_RETROARCH_SHADERS_DIR:-$PLATFORM_ROOT/shaders}"
     export UMRK_SECONDARY_SDCARD_PATH="${UMRK_SECONDARY_SDCARD_PATH:-$SECONDARY_SD_MOUNT}"
 
     if [ "$PLATFORM" = "mlp1" ]; then

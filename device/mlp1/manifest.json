@@ -5,6 +5,7 @@
   "retroarch_bin_relpath": "bin/retroarch",
   "cores_dir_relpath": "cores",
   "info_dir_relpath": "info",
+  "shaders_dir_relpath": "shaders",
   "defaults_dir_relpath": "defaults",
   "theme_dir_relpath": "../../launcher/res/themes",
   "managed_apps": [
