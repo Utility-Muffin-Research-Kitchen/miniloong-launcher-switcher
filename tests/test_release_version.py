@@ -65,6 +65,29 @@ class ReleaseVersionTests(unittest.TestCase):
             MODULE.validate_platform_payload_coverage(sd_root, "candidate")
         self.assertIn("runtime", MODULE.PROMOTED_PLATFORM_DIRS)
 
+    def test_platform_payload_promotes_shader_directory(self):
+        with tempfile.TemporaryDirectory() as raw:
+            sd_root = Path(raw)
+            shaders = (
+                sd_root
+                / ".system/leaf/releases/candidate/platforms/mlp1/shaders"
+            )
+            shaders.mkdir(parents=True)
+            MODULE.validate_platform_payload_coverage(sd_root, "candidate")
+        self.assertIn("shaders", MODULE.PROMOTED_PLATFORM_DIRS)
+
+    def test_managed_installer_preserves_and_syncs_shader_namespaces(self):
+        script = MODULE.build_managed_installer_script("candidate")
+        self.assertIn("migrate_legacy_downloaded_shaders", script)
+        self.assertIn("sync_leaf_shaders", script)
+        self.assertIn(
+            'USER_SHADERS="${UMRK_RETROARCH_USER_SHADERS_DIR:-'
+            '$INTERNAL_DATA/retroarch/.config/retroarch/shaders}"',
+            script,
+        )
+        self.assertIn("for namespace in leaf-bundled leaf-recommended", script)
+        self.assertIn('[ "$preset_count" -gt 11 ]', script)
+
 
 if __name__ == "__main__":
     unittest.main()

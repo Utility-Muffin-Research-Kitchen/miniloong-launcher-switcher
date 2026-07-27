@@ -37,6 +37,7 @@ PROMOTED_PLATFORM_DIRS = (
     "boot-animation",
     "emulators",
     "runtime",
+    "shaders",
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
@@ -404,6 +405,7 @@ USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SDCARD_PATH/.userdata/shared}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
 INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}"
+USER_SHADERS="${UMRK_RETROARCH_USER_SHADERS_DIR:-$INTERNAL_DATA/retroarch/.config/retroarch/shaders}"
 MARKER="${UMRK_MARKER_PATH:-$ACTIVE_PLATFORM/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
@@ -526,6 +528,62 @@ replace_file() {
     mv "$tmp" "$dst" || fail "failed to promote $tmp to $dst"
 }
 
+migrate_legacy_downloaded_shaders() {
+    legacy="$ACTIVE_PLATFORM/shaders/shaders_glsl"
+    downloaded="$USER_SHADERS/shaders_glsl"
+    [ -d "$legacy" ] || return 0
+    [ ! -e "$downloaded" ] || return 0
+
+    preset_count="$(find "$legacy" -type f -name '*.glslp' 2>/dev/null |
+        wc -l | tr -d ' ')"
+    case "$preset_count" in
+        ''|*[!0-9]*) return 0 ;;
+    esac
+    # The former Leaf bundle had 11 standard presets in shaders_glsl. A larger
+    # tree was populated by RetroArch's online updater and belongs to the user.
+    [ "$preset_count" -gt 11 ] || return 0
+
+    mkdir -p "$USER_SHADERS" || fail "failed to create user shader root"
+    tmp="$downloaded.tmp.$$"
+    rm -rf "$tmp" 2>/dev/null || true
+    cp -R "$legacy" "$tmp" ||
+        fail "failed to preserve legacy updater shader collection"
+    mv "$tmp" "$downloaded" ||
+        fail "failed to promote preserved updater shader collection"
+    log_msg "preserved $preset_count legacy updater shader presets"
+}
+
+sync_leaf_shaders() {
+    source_root="$ACTIVE_PLATFORM/shaders"
+    [ -d "$source_root" ] || return 0
+    [ -d "$source_root/leaf-bundled" ] ||
+        fail "release shader bundle lacks leaf-bundled"
+    [ -d "$source_root/leaf-recommended" ] ||
+        fail "release shader bundle lacks leaf-recommended"
+    mkdir -p "$USER_SHADERS/custom" ||
+        fail "failed to create durable user shader directories"
+
+    for namespace in leaf-bundled leaf-recommended; do
+        src="$source_root/$namespace"
+        dst="$USER_SHADERS/$namespace"
+        tmp="$dst.tmp.$$"
+        previous="$dst.previous.$$"
+        rm -rf "$tmp" "$previous" 2>/dev/null || true
+        cp -R "$src" "$tmp" ||
+            fail "failed to stage $namespace shaders"
+        if [ -e "$dst" ]; then
+            mv "$dst" "$previous" ||
+                fail "failed to back up $namespace shaders"
+        fi
+        if ! mv "$tmp" "$dst"; then
+            [ ! -e "$previous" ] || mv "$previous" "$dst" 2>/dev/null || true
+            fail "failed to promote $namespace shaders"
+        fi
+        rm -rf "$previous" 2>/dev/null || true
+    done
+    log_msg "synchronized Leaf shader namespaces to durable user state"
+}
+
 install_runtime_files() {
     cat > "$HOOK_TMP" <<'UMRK_LEAF_HOOK_EOF'
 __HOOK__
@@ -632,6 +690,7 @@ install_runtime_files
 log_msg "promoting launcher payload"
 replace_dir "$RELEASE_LAUNCHER" "$ACTIVE_LAUNCHER"
 mkdir -p "$ACTIVE_PLATFORM" || fail "failed to create active platform root"
+migrate_legacy_downloaded_shaders
 log_msg "promoting platform payload"
 for payload_entry in __PROMOTED_DIRS__ __PROMOTED_FILES__; do
     rm -rf "$ACTIVE_PLATFORM/$payload_entry" 2>/dev/null || true
@@ -654,6 +713,7 @@ fi
 if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
     find "$ACTIVE_PLATFORM/platform.d" -type f -exec chmod 755 {} \\; 2>/dev/null || true
 fi
+sync_leaf_shaders
 log_msg "promoting managed apps"
 promote_managed_apps
 create_public_dirs

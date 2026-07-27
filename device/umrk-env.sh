@@ -129,6 +129,7 @@ umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
 umrk_env_default UMRK_INTERNAL_DATA_PATH "$SDCARD_PATH/$_umrk_default_internal_rel"
 umrk_env_default UMRK_MARKER_PATH "$SYSTEM_PATH/enabled"
 umrk_env_default UMRK_ADB_MARKER_PATH "$UMRK_INTERNAL_DATA_PATH/adb-enabled"
+umrk_env_default UMRK_RETROARCH_USER_SHADERS_DIR "$UMRK_INTERNAL_DATA_PATH/retroarch/.config/retroarch/shaders"
 
 umrk_env_default UMRK_RETROARCH_BIN "$SYSTEM_PATH/bin/retroarch"
 # RetroArch's HOME-based config dir: where it reads per-core configs and
