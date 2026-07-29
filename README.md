@@ -18,6 +18,7 @@ The switcher installs one early init hook and one session supervisor:
 ```text
 /etc/init.d/S50leaf
 /usr/bin/umrk-leaf-session
+/usr/bin/umrk-mount-stubs
 ```
 
 It does not replace `/loong/loong_pangu` or `/loong/loong_storage`. The legacy
@@ -41,6 +42,15 @@ stock boot continues into `S50loong`. ADB is optional for entering Leaf mode: if
 Jawaka has written the Leaf ADB restore marker, the hook repairs
 `/etc/.usb_config` with the immutable `usb_adb_en` pin before starting USB ADB;
 otherwise it continues without USB ADB so the user can enable it from Settings.
+
+The mount-stub helper protects the rootfs directories hidden beneath
+`/mnt/sdcard` and `/media/sdcard1` with the ext filesystem immutable attribute.
+It bind-mounts only `/` at a temporary view so it can reach the covered
+directories without touching either mounted card, recursively protects any
+content already stranded there, and checks both attributes before Leaf starts.
+Normal block-device mounts and writes to mounted cards remain unaffected. If
+the protection cannot be established, `S50leaf` falls back to stock instead of
+starting a service that could write through an absent card mount.
 
 On MLP1, if `/mnt/sdcard` does not contain the marker/bundle and
 `/media/sdcard1` does, the session treats `/media/sdcard1` as the active Leaf
@@ -303,7 +313,9 @@ adb shell '/usr/bin/umrk-launcher-switcher-uninstall.sh'
 ```
 
 The uninstall script removes `/etc/init.d/S50leaf` and
-`/usr/bin/umrk-leaf-session`. New hook installs leave stock Loong binaries
-untouched. If an older UMRK install replaced `/loong/loong_pangu` or
-`/loong/loong_storage`, uninstall restores them from their `.stock.umrk`
-backups.
+`/usr/bin/umrk-leaf-session`, clears the immutable attributes from both
+underlying rootfs mount stubs, and removes `/usr/bin/umrk-mount-stubs`. If
+unlock fails, the helper is retained for a safe retry and uninstall reports
+failure. New hook installs leave stock Loong binaries untouched. If an older
+UMRK install replaced `/loong/loong_pangu` or `/loong/loong_storage`, uninstall
+restores them from their `.stock.umrk` backups.

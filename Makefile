@@ -13,7 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
-        runtime-env-fixtures release-version-test \
+        runtime-env-fixtures release-version-test mount-stub-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
         adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs \
@@ -32,6 +32,7 @@ help:
 	@echo "  make adb-install-wrapper | adb-uninstall-wrapper  compatibility aliases for init-hook install/remove"
 	@echo "  make runtime-env-fixtures              validate configured dual-source exports"
 	@echo "  make release-version-test              validate release id/version separation"
+	@echo "  make mount-stub-test                    validate immutable rootfs mount stubs"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
 
@@ -39,6 +40,11 @@ runtime-env-fixtures:
 	@tools/runtime-env-fixtures.sh
 
 release-version-test:
+	@python3 tests/test_release_version.py
+
+mount-stub-test:
+	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
+	@tools/mount-stub-fixtures.sh
 	@python3 tests/test_release_version.py
 
 # Generate the SD-root OTA install payload around an assembled launcher bundle.

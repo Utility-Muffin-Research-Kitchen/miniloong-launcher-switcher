@@ -9,10 +9,19 @@
 ### END INIT INFO
 
 SESSION=/usr/bin/umrk-leaf-session
+MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 
 case "${1:-start}" in
     start|"")
         [ -x "$SESSION" ] || exit 0
+        if [ ! -x "$MOUNT_STUBS" ]; then
+            echo "Leaf mount-stub protection missing; falling back to stock" >&2
+            exit 0
+        fi
+        if ! "$MOUNT_STUBS" lock; then
+            echo "Leaf mount-stub protection failed; falling back to stock" >&2
+            exit 0
+        fi
         exec "$SESSION" start
         ;;
     stop)

@@ -6,6 +6,7 @@ SDCARD_PATH="${SDCARD_PATH:-/mnt/sdcard}"
 PLATFORM_ROOT="${UMRK_PLATFORM_PATH:-${SYSTEM_PATH:-$SDCARD_PATH/.system/leaf/platforms/$PLATFORM}}"
 ENV_FILE="${UMRK_ENV_FILE:-$PLATFORM_ROOT/launcher/env.sh}"
 if [ -f "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
     . "$ENV_FILE"
 fi
 
@@ -19,6 +20,7 @@ STORAGE=/loong/loong_storage
 STORAGE_BACKUP=/loong/loong_storage.stock.umrk
 HOOK=/etc/init.d/S50leaf
 SESSION=/usr/bin/umrk-leaf-session
+MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 
 log_msg() {
     log_dir="${LOG%/*}"
@@ -74,10 +76,23 @@ if ! remount_root_rw; then
 fi
 storage_restore_status=0
 restore_stock_storage || storage_restore_status=$?
+stub_unlock_status=0
+if [ -x "$MOUNT_STUBS" ]; then
+    "$MOUNT_STUBS" unlock >>"$LOG" 2>&1 || stub_unlock_status=$?
+fi
 
 rm -f "$HOOK" "$SESSION" 2>/dev/null || true
 log_msg "removed init hook/session"
 echo "removed init hook/session"
+
+if [ "$stub_unlock_status" -eq 0 ]; then
+    rm -f "$MOUNT_STUBS" 2>/dev/null || true
+    log_msg "cleared rootfs mount-stub protection"
+    echo "cleared rootfs mount-stub protection"
+else
+    log_msg "failed to clear rootfs mount-stub protection; helper retained"
+    echo "failed to clear rootfs mount-stub protection; helper retained" >&2
+fi
 
 if is_old_umrk_pangu_wrapper; then
     if [ ! -f "$BACKUP" ]; then
@@ -103,4 +118,7 @@ sync
 
 if [ "$storage_restore_status" -ne 0 ]; then
     exit "$storage_restore_status"
+fi
+if [ "$stub_unlock_status" -ne 0 ]; then
+    exit "$stub_unlock_status"
 fi
