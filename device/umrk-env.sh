@@ -15,7 +15,49 @@ umrk_env_default() {
     fi
 }
 
-umrk_env_default UMRK_ENV_VERSION "1"
+umrk_path2_valid() {
+    awk \
+        -v roots="${SDCARD_PATHS:-}" \
+        -v userdata="${USERDATA_PATHS:-}" \
+        -v shared="${SHARED_USERDATA_PATHS:-}" \
+        -v saves="${SAVES_PATHS:-}" \
+        -v states="${STATES_PATHS:-}" \
+        -v root0="${SDCARD_PATH:-}" \
+        -v userdata0="${USERDATA_PATH:-}" \
+        -v shared0="${SHARED_USERDATA_PATH:-}" \
+        -v saves0="${SAVES_PATH:-}" \
+        -v states0="${STATES_PATH:-}" '
+        function under(path, root) {
+            return path == root || index(path, root "/") == 1
+        }
+        function valid_item(path) {
+            return path ~ /^\// && (path == "/" || path !~ /\/$/) &&
+                   path !~ /\/\// &&
+                   path !~ /\/\.\.?\// && path !~ /\/\.\.?$/
+        }
+        BEGIN {
+            count = split(roots, r, ":")
+            if (count < 1 || split(userdata, u, ":") != count ||
+                split(shared, h, ":") != count ||
+                split(saves, s, ":") != count ||
+                split(states, t, ":") != count ||
+                r[1] != root0 || u[1] != userdata0 || h[1] != shared0 ||
+                s[1] != saves0 || t[1] != states0) exit 1
+            for (i = 1; i <= count; i++) {
+                if (!valid_item(r[i]) || !valid_item(u[i]) ||
+                    !valid_item(h[i]) || !valid_item(s[i]) ||
+                    !valid_item(t[i]) || !under(u[i], r[i]) ||
+                    !under(h[i], r[i]) || !under(s[i], r[i]) ||
+                    !under(t[i], r[i])) exit 1
+                for (j = 1; j < i; j++) {
+                    if (r[i] == r[j] || u[i] == u[j] || h[i] == h[j] ||
+                        s[i] == s[j] || t[i] == t[j]) exit 1
+                }
+            }
+            exit 0
+        }
+    '
+}
 
 if [ -n "${JAWAKA_SDCARD_ROOT:-}" ] && [ -z "${SDCARD_PATH:-}" ]; then
     export SDCARD_PATH="$JAWAKA_SDCARD_ROOT"
@@ -94,6 +136,8 @@ case "$PLATFORM" in
         umrk_env_default UMRK_SECONDARY_SDCARD_PATH "/media/sdcard1"
         umrk_env_default UMRK_SSH_PRIMARY_IFACE "wlan0"
         _umrk_sdcard_paths="$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH"
+        _umrk_userdata_paths="$USERDATA_PATH:$UMRK_SECONDARY_SDCARD_PATH/.userdata/$PLATFORM"
+        _umrk_shared_userdata_paths="$SHARED_USERDATA_PATH:$UMRK_SECONDARY_SDCARD_PATH/.userdata/shared"
         _umrk_roms_paths="$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms"
         _umrk_images_paths="$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images"
         _umrk_music_paths="$MUSIC_PATH:$UMRK_SECONDARY_SDCARD_PATH/Music"
@@ -105,6 +149,8 @@ case "$PLATFORM" in
         ;;
     *)
         _umrk_sdcard_paths="$SDCARD_PATH"
+        _umrk_userdata_paths="$USERDATA_PATH"
+        _umrk_shared_userdata_paths="$SHARED_USERDATA_PATH"
         _umrk_roms_paths="$ROMS_PATH"
         _umrk_images_paths="$IMAGES_PATH"
         _umrk_music_paths="$MUSIC_PATH"
@@ -117,6 +163,8 @@ case "$PLATFORM" in
 esac
 
 umrk_env_default SDCARD_PATHS "$_umrk_sdcard_paths"
+umrk_env_default USERDATA_PATHS "$_umrk_userdata_paths"
+umrk_env_default SHARED_USERDATA_PATHS "$_umrk_shared_userdata_paths"
 umrk_env_default ROMS_PATHS "$_umrk_roms_paths"
 umrk_env_default IMAGES_PATHS "$_umrk_images_paths"
 umrk_env_default MUSIC_PATHS "$_umrk_music_paths"
@@ -125,6 +173,12 @@ umrk_env_default BIOS_PATHS "$_umrk_bios_paths"
 umrk_env_default SAVES_PATHS "$_umrk_saves_paths"
 umrk_env_default STATES_PATHS "$_umrk_states_paths"
 umrk_env_default CHEATS_PATHS "$_umrk_cheats_paths"
+
+if umrk_path2_valid; then
+    umrk_env_default UMRK_ENV_VERSION "2"
+else
+    export UMRK_ENV_VERSION="1"
+fi
 
 umrk_env_default UMRK_INTERNAL_DATA_PATH "$SDCARD_PATH/$_umrk_default_internal_rel"
 umrk_env_default UMRK_MARKER_PATH "$SYSTEM_PATH/enabled"
@@ -170,6 +224,8 @@ umrk_env_default CAT_SHOW_HINTS "1"
 unset _umrk_name _umrk_value _umrk_current _umrk_default_sd
 unset _umrk_default_system_rel _umrk_default_launcher_rel
 unset _umrk_default_runtime _umrk_default_internal_rel
-unset _umrk_sdcard_paths _umrk_roms_paths _umrk_images_paths _umrk_apps_paths
+unset _umrk_sdcard_paths _umrk_userdata_paths _umrk_shared_userdata_paths
+unset _umrk_roms_paths _umrk_images_paths _umrk_apps_paths
 unset _umrk_music_paths _umrk_bios_paths _umrk_saves_paths _umrk_states_paths
 unset _umrk_cheats_paths
+unset -f umrk_path2_valid 2>/dev/null || true
