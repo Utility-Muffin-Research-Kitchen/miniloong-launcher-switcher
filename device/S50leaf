@@ -10,21 +10,38 @@
 
 SESSION=/usr/bin/umrk-leaf-session
 MOUNT_STUBS=/usr/bin/umrk-mount-stubs
+BOOT_LOG=/tmp/umrk-leaf-boot.log
+
+log_failure() {
+    printf '%s\n' "$*" >&2
+    printf '%s\n' "$*" >>"$BOOT_LOG" 2>/dev/null || true
+}
+
+remount_root_rw() {
+    mount -o remount,rw / >>"$BOOT_LOG" 2>&1 && return 0
+    mount -o remount,rw /dev/root / >>"$BOOT_LOG" 2>&1
+}
 
 case "${1:-start}" in
     start|"")
         [ -x "$SESSION" ] || exit 0
         if [ ! -x "$MOUNT_STUBS" ]; then
-            echo "Leaf mount-stub protection missing; falling back to stock" >&2
+            log_failure "Leaf mount-stub protection missing; falling back to stock"
+            exit 0
+        fi
+        if ! remount_root_rw; then
+            log_failure "Leaf rootfs remount rw failed before mount-stub protection; falling back to stock"
             exit 0
         fi
         if ! "$MOUNT_STUBS" lock; then
-            echo "Leaf mount-stub protection failed; falling back to stock" >&2
+            log_failure "Leaf mount-stub protection failed; falling back to stock"
             exit 0
         fi
         exec "$SESSION" start
         ;;
     stop)
+        # Stub immutability is a device safety invariant, not session state.
+        # Only the explicit uninstaller clears it.
         [ -x "$SESSION" ] && "$SESSION" stop
         exit 0
         ;;

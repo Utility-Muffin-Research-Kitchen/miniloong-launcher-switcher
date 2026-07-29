@@ -109,8 +109,12 @@ class ReleaseVersionTests(unittest.TestCase):
         hook = MODULE.read_required(MODULE.HOOK_PATH)
         self.assertIn('[ ! -x "$MOUNT_STUBS" ]', hook)
         self.assertIn("protection missing; falling back to stock", hook)
+        remount = hook.index("if ! remount_root_rw")
+        lock = hook.index('! "$MOUNT_STUBS" lock')
+        self.assertLess(remount, lock)
         self.assertIn('! "$MOUNT_STUBS" lock', hook)
         self.assertIn("falling back to stock", hook)
+        self.assertIn("Only the explicit uninstaller clears it", hook)
 
 
 if __name__ == "__main__":

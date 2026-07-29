@@ -11,6 +11,9 @@ ROOT_VIEW="${UMRK_ROOT_VIEW:-/tmp/umrk-root-view.$$}"
 MOUNT_STUBS="/mnt/sdcard /media/sdcard1"
 root_view_mounted=0
 
+# SIGKILL cannot be trapped and may leave this private bind until reboot. Do
+# not terminate the helper forcibly; ordinary exits and handled signals unmount.
+
 # shellcheck disable=SC2329 # invoked by trap
 cleanup() {
     if [ "$root_view_mounted" -eq 1 ]; then
@@ -30,6 +33,26 @@ is_immutable() {
         *i*) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+tree_is_immutable() {
+    find "$1" -xdev -exec sh -c '
+        for entry do
+            attrs="$(lsattr -d "$entry" 2>/dev/null | awk '\''{print $1; exit}'\'')" ||
+                exit 1
+            case "$attrs" in *i*) ;; *) exit 1 ;; esac
+        done
+    ' sh {} +
+}
+
+tree_is_mutable() {
+    find "$1" -xdev -exec sh -c '
+        for entry do
+            attrs="$(lsattr -d "$entry" 2>/dev/null | awk '\''{print $1; exit}'\'')" ||
+                exit 1
+            case "$attrs" in *i*) exit 1 ;; esac
+        done
+    ' sh {} +
 }
 
 case "$MODE" in
@@ -55,17 +78,17 @@ for stub in $MOUNT_STUBS; do
             # Protect any content already stranded beneath the mount as well as
             # the mountpoint itself. -xdev prevents an unexpected nested mount
             # from broadening the operation.
-            find "$target" -xdev -depth -exec chattr +i {} \; ||
+            find "$target" -xdev -depth -exec chattr +i {} + ||
                 fail "cannot make rootfs stub immutable: $stub"
-            is_immutable "$target" ||
-                fail "rootfs stub did not become immutable: $stub"
+            tree_is_immutable "$target" ||
+                fail "rootfs stub tree did not become immutable: $stub"
             ;;
         unlock)
             [ -e "$target" ] || continue
-            find "$target" -xdev -exec chattr -i {} \; ||
+            find "$target" -xdev -exec chattr -i {} + ||
                 fail "cannot clear rootfs stub immutability: $stub"
-            is_immutable "$target" &&
-                fail "rootfs stub remained immutable: $stub"
+            tree_is_mutable "$target" ||
+                fail "rootfs stub tree remained partly immutable: $stub"
             ;;
         status)
             [ -d "$target" ] || fail "rootfs stub missing: $stub"

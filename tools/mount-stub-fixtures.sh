@@ -24,19 +24,22 @@ cat >"$fake_bin/chattr" <<'EOF'
 #!/bin/sh
 set -eu
 mode=$1
-target=$2
+shift
 state=${UMRK_FIXTURE_STATE:?}
-case "$mode" in
-    +i)
-        grep -Fqx "$target" "$state" 2>/dev/null || printf '%s\n' "$target" >>"$state"
-        ;;
-    -i)
-        temporary="$state.tmp.$$"
-        grep -Fvx "$target" "$state" >"$temporary" 2>/dev/null || true
-        mv "$temporary" "$state"
-        ;;
-    *) exit 2 ;;
-esac
+for target do
+    [ "${UMRK_FIXTURE_FAIL_PATH:-}" != "$target" ] || exit 1
+    case "$mode" in
+        +i)
+            grep -Fqx "$target" "$state" 2>/dev/null || printf '%s\n' "$target" >>"$state"
+            ;;
+        -i)
+            temporary="$state.tmp.$$"
+            grep -Fvx "$target" "$state" >"$temporary" 2>/dev/null || true
+            mv "$temporary" "$state"
+            ;;
+        *) exit 2 ;;
+    esac
+done
 EOF
 cat >"$fake_bin/lsattr" <<'EOF'
 #!/bin/sh
@@ -69,5 +72,26 @@ grep -q '^/mnt/sdcard mutable$' "$fixture/unlocked-status"
 
 "$helper" lock
 "$helper" status >/dev/null
+
+export UMRK_FIXTURE_FAIL_PATH="$root_view/mnt/sdcard/stranded"
+if "$helper" unlock >"$fixture/unlock-failure" 2>&1; then
+    echo "unlock accepted a nested chattr failure" >&2
+    exit 1
+fi
+grep -Fq "cannot clear rootfs stub immutability: /mnt/sdcard" \
+    "$fixture/unlock-failure"
+grep -Fqx "$UMRK_FIXTURE_FAIL_PATH" "$state"
+unset UMRK_FIXTURE_FAIL_PATH
+"$helper" unlock
+
+: >"$state"
+export UMRK_FIXTURE_FAIL_PATH="$root_view/mnt/sdcard/stranded"
+if "$helper" lock >"$fixture/lock-failure" 2>&1; then
+    echo "lock accepted a nested chattr failure" >&2
+    exit 1
+fi
+grep -Fq "cannot make rootfs stub immutable: /mnt/sdcard" \
+    "$fixture/lock-failure"
+unset UMRK_FIXTURE_FAIL_PATH
 
 echo "mount stub fixtures: PASS"
