@@ -47,10 +47,13 @@ The mount-stub helper protects the rootfs directories hidden beneath
 `/mnt/sdcard` and `/media/sdcard1` with the ext filesystem immutable attribute.
 It bind-mounts only `/` at a temporary view so it can reach the covered
 directories without touching either mounted card, recursively protects any
-content already stranded there, and checks both attributes before Leaf starts.
-Normal block-device mounts and writes to mounted cards remain unaffected. If
-the protection cannot be established, `S50leaf` falls back to stock instead of
-starting a service that could write through an absent card mount.
+content already stranded there, and verifies every covered entry before Leaf
+starts. The boot hook first remounts root read-write, matching the session and
+uninstall paths. Normal block-device mounts and writes to mounted cards remain
+unaffected. If the root remount or protection cannot be established, `S50leaf`
+records the reason in `/tmp/umrk-leaf-boot.log` and falls back to stock instead
+of starting a service that could write through an absent card mount. Protection
+outlives a Leaf session stop and is cleared only by explicit uninstall.
 
 On MLP1, if `/mnt/sdcard` does not contain the marker/bundle and
 `/media/sdcard1` does, the session treats `/media/sdcard1` as the active Leaf
