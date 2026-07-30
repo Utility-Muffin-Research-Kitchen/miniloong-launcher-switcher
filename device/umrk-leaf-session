@@ -895,12 +895,16 @@ leaf_start() {
     run_platform_hooks
     kill_stale_custom_launcher
 
-    cd "$BUNDLE" 2>/dev/null || {
-        pass_to_stock "could not cd to launcher bundle: $BUNDLE"
-        return 0
-    }
-
     while true; do
+        # Suspend or a card-role change can detach and recreate the active
+        # mount. Re-enter the live bundle before every daemon generation so the
+        # wrapper never hands a stale, getcwd-less directory to Jawaka or its
+        # service children.
+        cd "$BUNDLE" 2>/dev/null || {
+            pass_to_stock "could not cd to launcher bundle: $BUNDLE"
+            return 0
+        }
+
         if ! check_crash_loop; then
             pass_to_stock "crash-loop guard disabled Leaf marker"
             return 0
