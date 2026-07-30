@@ -18,6 +18,10 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ReleaseVersionTests(unittest.TestCase):
+    def test_release_a_overlay_has_no_legacy_ssh_boot_hook(self):
+        legacy_hooks = list(ROOT.glob("device/**/01-ssh-autostart.sh"))
+        self.assertEqual([], legacy_hooks)
+
     def test_explicit_version_is_distinct_from_release_id(self):
         script = MODULE.build_managed_installer_script(
             "2026-07-20-gabc1234", "0.7.0"
