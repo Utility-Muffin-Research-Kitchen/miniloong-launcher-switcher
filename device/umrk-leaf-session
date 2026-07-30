@@ -112,6 +112,8 @@ set_active_launcher_sd() {
     fi
     export UMRK_SECONDARY_SDCARD_PATH="$configured_secondary"
     export SDCARD_PATHS="$active:$configured_secondary"
+    export USERDATA_PATHS="$active/.userdata/$PLATFORM:$configured_secondary/.userdata/$PLATFORM"
+    export SHARED_USERDATA_PATHS="$active/.userdata/shared:$configured_secondary/.userdata/shared"
     export ROMS_PATHS="$active/Roms:$configured_secondary/Roms"
     export IMAGES_PATHS="$active/Images:$configured_secondary/Images"
     export MUSIC_PATHS="$active/Music:$configured_secondary/Music"
@@ -575,6 +577,8 @@ export_leaf_env() {
 
     if [ "$PLATFORM" = "mlp1" ]; then
         export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH:$UMRK_SECONDARY_SDCARD_PATH}"
+        export USERDATA_PATHS="${USERDATA_PATHS:-$USERDATA_PATH:$UMRK_SECONDARY_SDCARD_PATH/.userdata/$PLATFORM}"
+        export SHARED_USERDATA_PATHS="${SHARED_USERDATA_PATHS:-$SHARED_USERDATA_PATH:$UMRK_SECONDARY_SDCARD_PATH/.userdata/shared}"
         export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms}"
         export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images}"
         export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH:$UMRK_SECONDARY_SDCARD_PATH/Music}"
@@ -586,6 +590,8 @@ export_leaf_env() {
         export CHEATS_PATHS="${CHEATS_PATHS:-$CHEATS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Cheats}"
     else
         export SDCARD_PATHS="${SDCARD_PATHS:-$SDCARD_PATH}"
+        export USERDATA_PATHS="${USERDATA_PATHS:-$USERDATA_PATH}"
+        export SHARED_USERDATA_PATHS="${SHARED_USERDATA_PATHS:-$SHARED_USERDATA_PATH}"
         export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH}"
         export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH}"
         export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH}"
