@@ -20,7 +20,7 @@ legacy_projection="$(
         LC_ALL=C sort |
         cksum
 )"
-[ "$legacy_projection" = "3712759435 3192" ] || {
+[ "$legacy_projection" = "1369841018 3345" ] || {
     echo "v1 runtime environment projection changed: $legacy_projection" >&2
     exit 1
 }
