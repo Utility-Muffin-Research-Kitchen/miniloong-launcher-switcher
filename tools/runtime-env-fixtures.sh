@@ -17,6 +17,7 @@ for expected in \
     "IMAGES_PATHS=$primary/Images:$secondary/Images" \
     "MUSIC_PATHS=$primary/Music:$secondary/Music" \
     "VIDEO_PATHS=$primary/Videos:$secondary/Videos" \
+    "RECORDINGS_PATH=$primary/Recordings" \
     "APPS_PATHS=$primary/Apps:$secondary/Apps" \
     "BIOS_PATHS=$primary/BIOS:$secondary/BIOS" \
     "SAVES_PATHS=$primary/Saves:$secondary/Saves" \
@@ -49,6 +50,7 @@ check_recovery_function() {
         "SDCARD_PATHS=/fixture/recovered:/fixture/unmounted-alternate" \
         "MUSIC_PATHS=/fixture/recovered/Music:/fixture/unmounted-alternate/Music" \
         "VIDEO_PATHS=/fixture/recovered/Videos:/fixture/unmounted-alternate/Videos" \
+        "RECORDINGS_PATH=/fixture/recovered/Recordings" \
         "CHEATS_PATHS=/fixture/recovered/Cheats:/fixture/unmounted-alternate/Cheats"; do
         printf '%s\n' "$output" | grep -F -x "$expected" >/dev/null
     done
