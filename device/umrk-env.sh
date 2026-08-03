@@ -78,6 +78,9 @@ umrk_env_default ROMS_PATH "$SDCARD_PATH/Roms"
 umrk_env_default IMAGES_PATH "$SDCARD_PATH/Images"
 umrk_env_default MUSIC_PATH "$SDCARD_PATH/Music"
 umrk_env_default VIDEO_PATH "$SDCARD_PATH/Videos"
+# Primary-owned gameplay captures. This is singular deliberately: Jawaka's
+# conversion pass is primary-only, so a second-card recording root would lie.
+umrk_env_default RECORDINGS_PATH "$SDCARD_PATH/Recordings"
 umrk_env_default APPS_PATH "$SDCARD_PATH/Apps"
 umrk_env_default BIOS_PATH "$SDCARD_PATH/BIOS"
 umrk_env_default SAVES_PATH "$SDCARD_PATH/Saves"
