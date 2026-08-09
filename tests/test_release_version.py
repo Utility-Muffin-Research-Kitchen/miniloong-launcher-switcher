@@ -92,6 +92,34 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("for namespace in leaf-bundled leaf-recommended", script)
         self.assertIn('[ "$preset_count" -gt 11 ]', script)
 
+    def test_installers_embed_and_enable_mount_stub_protection(self):
+        for script in (
+            MODULE.build_installer_script(),
+            MODULE.build_managed_installer_script("candidate"),
+        ):
+            with self.subTest(managed='RELEASE_ID="candidate"' in script):
+                self.assertIn("MOUNT_STUBS=/usr/bin/umrk-mount-stubs", script)
+                self.assertIn('"$MOUNT_STUBS" lock', script)
+                self.assertIn("mount --bind / \"$ROOT_VIEW\"", script)
+                self.assertIn('MOUNT_STUBS="/mnt/sdcard /media/sdcard1"', script)
+
+    def test_uninstaller_unlocks_before_removing_helper(self):
+        script = MODULE.read_required(MODULE.UNINSTALLER_PATH)
+        unlock = script.index('"$MOUNT_STUBS" unlock')
+        remove = script.index('rm -f "$MOUNT_STUBS"')
+        self.assertLess(unlock, remove)
+
+    def test_boot_hook_falls_back_when_stub_lock_fails(self):
+        hook = MODULE.read_required(MODULE.HOOK_PATH)
+        self.assertIn('[ ! -x "$MOUNT_STUBS" ]', hook)
+        self.assertIn("protection missing; falling back to stock", hook)
+        remount = hook.index("if ! remount_root_rw")
+        lock = hook.index('! "$MOUNT_STUBS" lock')
+        self.assertLess(remount, lock)
+        self.assertIn('! "$MOUNT_STUBS" lock', hook)
+        self.assertIn("falling back to stock", hook)
+        self.assertIn("Only the explicit uninstaller clears it", hook)
+
 
 if __name__ == "__main__":
     unittest.main()

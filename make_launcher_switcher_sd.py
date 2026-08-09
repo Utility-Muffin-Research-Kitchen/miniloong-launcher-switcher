@@ -54,6 +54,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 HOOK_PATH = ROOT_DIR / "device" / "S50leaf"
 SESSION_PATH = ROOT_DIR / "device" / "umrk-leaf-session"
 UNINSTALLER_PATH = ROOT_DIR / "device" / "umrk-launcher-switcher-uninstall.sh"
+MOUNT_STUBS_PATH = ROOT_DIR / "device" / "umrk-mount-stubs"
 
 MASK64 = (1 << 64) - 1
 
@@ -189,6 +190,7 @@ def build_installer_script(require_adb_pinned: bool = True) -> str:
     hook = read_required(HOOK_PATH).rstrip()
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
+    mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
     adb_preflight = (
         "assert_adb_pinned"
         if require_adb_pinned
@@ -215,6 +217,8 @@ HOOK_TMP=/tmp/S50leaf.umrk.$$
 SESSION_TMP=/tmp/umrk-leaf-session.$$
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
+MOUNT_STUBS=/usr/bin/umrk-mount-stubs
+MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
 
 log_msg() {
     mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
@@ -318,11 +322,17 @@ cat > "$UNINSTALL_TMP" <<'UMRK_LAUNCHER_UNINSTALL_EOF'
 __UNINSTALLER__
 UMRK_LAUNCHER_UNINSTALL_EOF
 
-chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" || fail "failed to chmod install files"
+cat > "$MOUNT_STUBS_TMP" <<'UMRK_MOUNT_STUBS_EOF'
+__MOUNT_STUBS__
+UMRK_MOUNT_STUBS_EOF
+
+chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" || fail "failed to chmod install files"
 mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
 mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
 mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
-chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" 2>/dev/null || true
+mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
+chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" 2>/dev/null || true
+"$MOUNT_STUBS" lock || fail "failed to protect rootfs mount stubs"
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 sync
 
@@ -336,6 +346,7 @@ echo "installed launcher switcher init hook"
         .replace("__HOOK__", hook)
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
+        .replace("__MOUNT_STUBS__", mount_stubs)
     )
 
 
@@ -369,6 +380,7 @@ def build_managed_installer_script(
     hook = read_required(HOOK_PATH).rstrip()
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
+    mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
     template = """#!/bin/sh
 set -u
 
@@ -419,6 +431,8 @@ HOOK_TMP=/tmp/S50leaf.umrk.$$
 SESSION_TMP=/tmp/umrk-leaf-session.$$
 UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
+MOUNT_STUBS=/usr/bin/umrk-mount-stubs
+MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
 
 log_msg() {
     mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
@@ -598,11 +612,16 @@ UMRK_LEAF_SESSION_EOF
 __UNINSTALLER__
 UMRK_LAUNCHER_UNINSTALL_EOF
 
-    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" || fail "failed to chmod install files"
+    cat > "$MOUNT_STUBS_TMP" <<'UMRK_MOUNT_STUBS_EOF'
+__MOUNT_STUBS__
+UMRK_MOUNT_STUBS_EOF
+
+    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" || fail "failed to chmod install files"
     mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
     mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
     mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
-    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" 2>/dev/null || true
+    mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
+    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" 2>/dev/null || true
 }
 
 promote_managed_apps() {
@@ -687,6 +706,7 @@ validate_release
 restore_old_pangu_wrapper
 restore_old_storage_noop
 install_runtime_files
+"$MOUNT_STUBS" lock || fail "failed to protect rootfs mount stubs"
 
 log_msg "promoting launcher payload"
 replace_dir "$RELEASE_LAUNCHER" "$ACTIVE_LAUNCHER"
@@ -740,6 +760,7 @@ echo "managed Leaf install complete"
         .replace("__HOOK__", hook)
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
+        .replace("__MOUNT_STUBS__", mount_stubs)
     )
 
 
