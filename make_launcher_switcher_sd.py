@@ -29,6 +29,7 @@ RELEASE_VERSION_RE = re.compile(
 # separately as the launcher payload.
 PROMOTED_PLATFORM_DIRS = (
     "bin",
+    "lib",
     "cores",
     "info",
     "defaults",

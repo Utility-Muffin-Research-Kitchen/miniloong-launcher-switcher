@@ -75,6 +75,12 @@ After the boot splash handoff, Leaf starts PulseAudio, `loong_power`, and
 `Exit to Stock` menu item writes a tmpfs sentinel; the session cleans up
 Leaf-owned processes and exits, allowing the same boot to continue into stock.
 
+SSH is a Jawaka-supervised SVC-1 service. The platform overlay deliberately has
+no `01-ssh-autostart.sh`: a detached boot hook would race the supervisor and
+bypass its storage and shutdown barriers. On the first service-aware boot,
+Jawaka atomically migrates a valid existing SSH config to persistent
+`Start with Leaf` intent; clean or invalid installs remain disabled.
+
 ## SD Data Layout
 
 Content on the card is split by ownership:
@@ -93,9 +99,10 @@ ZIP) promotes only release-owned files: the allowlisted platform payload and the
 paks listed in `managed-apps.txt`. It creates any missing public roots from
 `public-dirs.txt`, creates the `.userdata`/`.umrk` data roots (failing the
 install if they cannot be created or written), writes `release.json`, and only
-then re-enables the Leaf marker. **There is no migration step** - it is a clean
-cutover that leaves existing `.userdata`/`.umrk`/public content untouched, so a
-re-extracted ZIP is an in-place upgrade.
+then re-enables the Leaf marker. The installer itself has no app migration
+hook: it is a clean cutover that leaves existing `.userdata`/`.umrk`/public
+content untouched, so a re-extracted ZIP is an in-place upgrade. Jawaka owns
+the separate one-time SSH intent decision in its service-control database.
 
 Managed-install generation accepts a separate `--release-version`. Leaf uses
 this to write the stable semantic compatibility version to

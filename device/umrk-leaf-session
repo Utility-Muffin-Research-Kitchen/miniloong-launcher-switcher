@@ -117,6 +117,8 @@ set_active_launcher_sd() {
     export ROMS_PATHS="$active/Roms:$configured_secondary/Roms"
     export IMAGES_PATHS="$active/Images:$configured_secondary/Images"
     export MUSIC_PATHS="$active/Music:$configured_secondary/Music"
+    export VIDEO_PATHS="$active/Videos:$configured_secondary/Videos"
+    export RECORDINGS_PATH="$active/Recordings"
     export APPS_PATHS="$active/Apps:$configured_secondary/Apps"
     export BIOS_PATHS="$active/BIOS:$configured_secondary/BIOS"
     export SAVES_PATHS="$active/Saves:$configured_secondary/Saves"
@@ -560,6 +562,8 @@ export_leaf_env() {
     export ROMS_PATH="${ROMS_PATH:-$SD_MOUNT/Roms}"
     export IMAGES_PATH="${IMAGES_PATH:-$SD_MOUNT/Images}"
     export MUSIC_PATH="${MUSIC_PATH:-$SD_MOUNT/Music}"
+    export VIDEO_PATH="${VIDEO_PATH:-$SD_MOUNT/Videos}"
+    export RECORDINGS_PATH="${RECORDINGS_PATH:-$SD_MOUNT/Recordings}"
     export APPS_PATH="${APPS_PATH:-$SD_MOUNT/Apps}"
     export BIOS_PATH="${BIOS_PATH:-$SD_MOUNT/BIOS}"
     export SAVES_PATH="${SAVES_PATH:-$SD_MOUNT/Saves}"
@@ -578,6 +582,7 @@ export_leaf_env() {
         export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Roms}"
         export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Images}"
         export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH:$UMRK_SECONDARY_SDCARD_PATH/Music}"
+        export VIDEO_PATHS="${VIDEO_PATHS:-$VIDEO_PATH:$UMRK_SECONDARY_SDCARD_PATH/Videos}"
         export APPS_PATHS="${APPS_PATHS:-$APPS_PATH:$UMRK_SECONDARY_SDCARD_PATH/Apps}"
         export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH:$UMRK_SECONDARY_SDCARD_PATH/BIOS}"
         export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH:$UMRK_SECONDARY_SDCARD_PATH/Saves}"
@@ -590,6 +595,7 @@ export_leaf_env() {
         export ROMS_PATHS="${ROMS_PATHS:-$ROMS_PATH}"
         export IMAGES_PATHS="${IMAGES_PATHS:-$IMAGES_PATH}"
         export MUSIC_PATHS="${MUSIC_PATHS:-$MUSIC_PATH}"
+        export VIDEO_PATHS="${VIDEO_PATHS:-$VIDEO_PATH}"
         export APPS_PATHS="${APPS_PATHS:-$APPS_PATH}"
         export BIOS_PATHS="${BIOS_PATHS:-$BIOS_PATH}"
         export SAVES_PATHS="${SAVES_PATHS:-$SAVES_PATH}"
@@ -889,12 +895,16 @@ leaf_start() {
     run_platform_hooks
     kill_stale_custom_launcher
 
-    cd "$BUNDLE" 2>/dev/null || {
-        pass_to_stock "could not cd to launcher bundle: $BUNDLE"
-        return 0
-    }
-
     while true; do
+        # Suspend or a card-role change can detach and recreate the active
+        # mount. Re-enter the live bundle before every daemon generation so the
+        # wrapper never hands a stale, getcwd-less directory to Jawaka or its
+        # service children.
+        cd "$BUNDLE" 2>/dev/null || {
+            pass_to_stock "could not cd to launcher bundle: $BUNDLE"
+            return 0
+        }
+
         if ! check_crash_loop; then
             pass_to_stock "crash-loop guard disabled Leaf marker"
             return 0

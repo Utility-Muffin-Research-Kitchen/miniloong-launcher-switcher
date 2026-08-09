@@ -44,10 +44,8 @@
       "ignore_file_names": [],
       "playlist_extensions": [],
       "m3u_generation": "none",
-      "default_core": "genesis_plus_gx",
-      "alternate_cores": [
-        "picodrive"
-      ],
+      "default_core": "picodrive",
+      "alternate_cores": [],
       "rom_root": "Roms/32X",
       "image_root": "Images/32X",
       "bios_notes": [],
@@ -750,7 +748,7 @@
       "ignore_file_names": [],
       "playlist_extensions": [],
       "m3u_generation": "none",
-      "default_core": "genesis_plus_gx",
+      "default_core": "picodrive",
       "alternate_cores": [],
       "rom_root": "Roms/MD32X",
       "image_root": "Images/MD32X",

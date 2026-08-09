@@ -20,7 +20,7 @@ legacy_projection="$(
         LC_ALL=C sort |
         cksum
 )"
-[ "$legacy_projection" = "3712759435 3192" ] || {
+[ "$legacy_projection" = "1369841018 3345" ] || {
     echo "v1 runtime environment projection changed: $legacy_projection" >&2
     exit 1
 }
@@ -38,6 +38,8 @@ for expected in \
     "ROMS_PATHS=$primary/Roms:$secondary/Roms" \
     "IMAGES_PATHS=$primary/Images:$secondary/Images" \
     "MUSIC_PATHS=$primary/Music:$secondary/Music" \
+    "VIDEO_PATHS=$primary/Videos:$secondary/Videos" \
+    "RECORDINGS_PATH=$primary/Recordings" \
     "APPS_PATHS=$primary/Apps:$secondary/Apps" \
     "BIOS_PATHS=$primary/BIOS:$secondary/BIOS" \
     "SAVES_PATHS=$primary/Saves:$secondary/Saves" \
@@ -93,6 +95,8 @@ check_recovery_function() {
         "USERDATA_PATHS=/fixture/recovered/.userdata/mlp1:/fixture/unmounted-alternate/.userdata/mlp1" \
         "SHARED_USERDATA_PATHS=/fixture/recovered/.userdata/shared:/fixture/unmounted-alternate/.userdata/shared" \
         "MUSIC_PATHS=/fixture/recovered/Music:/fixture/unmounted-alternate/Music" \
+        "VIDEO_PATHS=/fixture/recovered/Videos:/fixture/unmounted-alternate/Videos" \
+        "RECORDINGS_PATH=/fixture/recovered/Recordings" \
         "CHEATS_PATHS=/fixture/recovered/Cheats:/fixture/unmounted-alternate/Cheats"; do
         printf '%s\n' "$output" | grep -F -x "$expected" >/dev/null
     done
