@@ -777,6 +777,42 @@ stop_boot_transition() {
     }
 }
 
+# Hand the vibration motor back in the state stock configures for itself at boot.
+# Stock's S50loong only sets the channel up when it is NOT already exported:
+#
+#     if [ ! -d "/sys/class/pwm/pwmchip0/pwm0" ]; then
+#         echo 0 > .../export; echo 1000000 > .../period
+#         echo 500000 > .../duty_cycle; echo normal > .../polarity
+#     fi
+#
+# jawakad exports pwm0 and deliberately never unexports it, because unexporting
+# latches this driver ON. So on a handoff that guard is false, stock skips its own
+# setup entirely and inherits whatever Leaf left. Stock then drives the motor with
+# `enable` alone -- loong_service references that one attribute and never writes
+# duty_cycle or polarity again. A channel resting at duty 0 under INVERSED polarity
+# is full on, so stock's first `enable 1` starts a buzz that nothing will ever stop.
+#
+# Writing stock's own values here makes the channel byte-identical to a clean stock
+# boot whether or not S50loong's guard fires. Order is load-bearing: enable off
+# first so a live buzz stops immediately, then period, because a zero period makes
+# every other write on this driver fail with EINVAL.
+restore_stock_rumble() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    pwm=/sys/class/pwm/pwmchip0/pwm0
+    [ -d "$pwm" ] || return 0
+    printf '%s' 0 >"$pwm/enable" 2>>"$LOG" || true
+    if ! printf '%s' 1000000 >"$pwm/period" 2>>"$LOG"; then
+        log_msg "best-effort rumble restore: period write failed; leaving channel alone"
+        return 0
+    fi
+    printf '%s' normal >"$pwm/polarity" 2>>"$LOG" ||
+        log_msg "best-effort rumble restore: polarity write failed"
+    printf '%s' 500000 >"$pwm/duty_cycle" 2>>"$LOG" ||
+        log_msg "best-effort rumble restore: duty_cycle write failed"
+    printf '%s' 0 >"$pwm/enable" 2>>"$LOG" ||
+        log_msg "best-effort rumble restore: enable write failed"
+}
+
 pass_to_stock() {
     reason="$1"
     log_msg "$reason; passing boot to stock S50loong"
@@ -785,6 +821,7 @@ pass_to_stock() {
     stop_audio_spk_keeper
     kill_stale_custom_launcher
     stop_leaf_owned_loong
+    restore_stock_rumble
     restore_sd_noexec
     # Hand the rootfs back to stock in the state it boots with (the kernel cmdline
     # mounts it rw). restore_stock_boot_animation leaves the rootfs read-only, but
