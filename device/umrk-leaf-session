@@ -101,6 +101,16 @@ set_active_launcher_sd() {
     export UMRK_MARKER_PATH="$SYSTEM_PATH/enabled"
     export UMRK_ADB_MARKER_PATH="$UMRK_INTERNAL_DATA_PATH/adb-enabled"
     export UMRK_BOOT_SPLASH_DISABLED_PATH="$UMRK_INTERNAL_DATA_PATH/boot-splash-disabled"
+    export ROMS_PATH="$active/Roms"
+    export IMAGES_PATH="$active/Images"
+    export MUSIC_PATH="$active/Music"
+    export VIDEO_PATH="$active/Videos"
+    export RECORDINGS_PATH="$active/Recordings"
+    export APPS_PATH="$active/Apps"
+    export BIOS_PATH="$active/BIOS"
+    export SAVES_PATH="$active/Saves"
+    export STATES_PATH="$active/States"
+    export CHEATS_PATH="$active/Cheats"
 
     configured_secondary="$alternate"
     if [ -z "$configured_secondary" ] || [ "$configured_secondary" = "$active" ]; then
@@ -124,6 +134,7 @@ set_active_launcher_sd() {
     export SAVES_PATHS="$active/Saves:$configured_secondary/Saves"
     export STATES_PATHS="$active/States:$configured_secondary/States"
     export CHEATS_PATHS="$active/Cheats:$configured_secondary/Cheats"
+    export UMRK_ENV_VERSION=2
 
     refresh_paths
     load_env_file
