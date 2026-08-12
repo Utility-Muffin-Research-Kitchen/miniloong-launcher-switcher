@@ -80,6 +80,29 @@ class ReleaseVersionTests(unittest.TestCase):
             MODULE.validate_platform_payload_coverage(sd_root, "candidate")
         self.assertIn("shaders", MODULE.PROMOTED_PLATFORM_DIRS)
 
+    def test_platform_payload_promotes_asset_directory(self):
+        with tempfile.TemporaryDirectory() as raw:
+            sd_root = Path(raw)
+            assets = (
+                sd_root
+                / ".system/leaf/releases/candidate/platforms/mlp1/assets"
+            )
+            assets.mkdir(parents=True)
+            MODULE.validate_platform_payload_coverage(sd_root, "candidate")
+        self.assertIn("assets", MODULE.PROMOTED_PLATFORM_DIRS)
+
+    def test_managed_installer_syncs_menu_asset_namespaces(self):
+        script = MODULE.build_managed_installer_script("candidate")
+        self.assertIn("sync_leaf_assets", script)
+        self.assertIn(
+            'USER_ASSETS="${UMRK_RETROARCH_USER_ASSETS_DIR:-'
+            '$INTERNAL_DATA/retroarch/.config/retroarch/assets}"',
+            script,
+        )
+        # Ozone reads its own sprites and fonts from ozone/, its icons from
+        # xmb/monochrome/, and the CJK fallback faces from pkg/.
+        self.assertIn("for namespace in ozone xmb/monochrome pkg", script)
+
     def test_managed_installer_preserves_and_syncs_shader_namespaces(self):
         script = MODULE.build_managed_installer_script("candidate")
         self.assertIn("migrate_legacy_downloaded_shaders", script)
