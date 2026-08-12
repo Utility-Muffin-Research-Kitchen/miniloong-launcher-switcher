@@ -85,6 +85,17 @@ check_recovery_function() {
         sed -n '/^set_active_launcher_sd()/,/^recover_launcher_sd_mount()/p' \
             "$source_file" | sed '$d'
         printf '%s\n' \
+            'export ROMS_PATH=/fixture/stale/Roms' \
+            'export IMAGES_PATH=/fixture/stale/Images' \
+            'export MUSIC_PATH=/fixture/stale/Music' \
+            'export VIDEO_PATH=/fixture/stale/Videos' \
+            'export RECORDINGS_PATH=/fixture/stale/Recordings' \
+            'export APPS_PATH=/fixture/stale/Apps' \
+            'export BIOS_PATH=/fixture/stale/BIOS' \
+            'export SAVES_PATH=/fixture/stale/Saves' \
+            'export STATES_PATH=/fixture/stale/States' \
+            'export CHEATS_PATH=/fixture/stale/Cheats' \
+            'export UMRK_ENV_VERSION=1' \
             'set_active_launcher_sd /fixture/recovered /fixture/unmounted-alternate' \
             'env'
     } >"$snippet"
@@ -94,9 +105,25 @@ check_recovery_function() {
         "SDCARD_PATHS=/fixture/recovered:/fixture/unmounted-alternate" \
         "USERDATA_PATHS=/fixture/recovered/.userdata/mlp1:/fixture/unmounted-alternate/.userdata/mlp1" \
         "SHARED_USERDATA_PATHS=/fixture/recovered/.userdata/shared:/fixture/unmounted-alternate/.userdata/shared" \
+        "ROMS_PATH=/fixture/recovered/Roms" \
+        "IMAGES_PATH=/fixture/recovered/Images" \
+        "MUSIC_PATH=/fixture/recovered/Music" \
+        "VIDEO_PATH=/fixture/recovered/Videos" \
+        "RECORDINGS_PATH=/fixture/recovered/Recordings" \
+        "APPS_PATH=/fixture/recovered/Apps" \
+        "BIOS_PATH=/fixture/recovered/BIOS" \
+        "SAVES_PATH=/fixture/recovered/Saves" \
+        "STATES_PATH=/fixture/recovered/States" \
+        "CHEATS_PATH=/fixture/recovered/Cheats" \
+        "UMRK_ENV_VERSION=2" \
+        "ROMS_PATHS=/fixture/recovered/Roms:/fixture/unmounted-alternate/Roms" \
+        "IMAGES_PATHS=/fixture/recovered/Images:/fixture/unmounted-alternate/Images" \
         "MUSIC_PATHS=/fixture/recovered/Music:/fixture/unmounted-alternate/Music" \
         "VIDEO_PATHS=/fixture/recovered/Videos:/fixture/unmounted-alternate/Videos" \
-        "RECORDINGS_PATH=/fixture/recovered/Recordings" \
+        "APPS_PATHS=/fixture/recovered/Apps:/fixture/unmounted-alternate/Apps" \
+        "BIOS_PATHS=/fixture/recovered/BIOS:/fixture/unmounted-alternate/BIOS" \
+        "SAVES_PATHS=/fixture/recovered/Saves:/fixture/unmounted-alternate/Saves" \
+        "STATES_PATHS=/fixture/recovered/States:/fixture/unmounted-alternate/States" \
         "CHEATS_PATHS=/fixture/recovered/Cheats:/fixture/unmounted-alternate/Cheats"; do
         printf '%s\n' "$output" | grep -F -x "$expected" >/dev/null
     done
