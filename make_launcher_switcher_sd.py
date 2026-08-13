@@ -39,6 +39,7 @@ PROMOTED_PLATFORM_DIRS = (
     "emulators",
     "runtime",
     "shaders",
+    "i18n",
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
