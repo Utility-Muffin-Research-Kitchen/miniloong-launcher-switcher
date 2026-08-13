@@ -40,6 +40,7 @@ PROMOTED_PLATFORM_DIRS = (
     "runtime",
     "shaders",
     "i18n",
+    "assets",
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
@@ -420,6 +421,7 @@ SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SDCARD_PATH/.userdata/shared}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
 INTERNAL_DATA="${UMRK_INTERNAL_DATA_PATH:-$SDCARD_PATH/.umrk/$PLATFORM}"
 USER_SHADERS="${UMRK_RETROARCH_USER_SHADERS_DIR:-$INTERNAL_DATA/retroarch/.config/retroarch/shaders}"
+USER_ASSETS="${UMRK_RETROARCH_USER_ASSETS_DIR:-$INTERNAL_DATA/retroarch/.config/retroarch/assets}"
 MARKER="${UMRK_MARKER_PATH:-$ACTIVE_PLATFORM/enabled}"
 LOG="$LOGS_PATH/umrk-launcher-install.log"
 PANGU=/loong/loong_pangu
@@ -600,6 +602,43 @@ sync_leaf_shaders() {
     log_msg "synchronized Leaf shader namespaces to durable user state"
 }
 
+sync_leaf_assets() {
+    # RetroArch's menu assets live in the durable user tree for the same reason
+    # the shaders do: assets_directory is a place the online updater writes to
+    # ("Update Assets" downloads the full upstream pack), and the release-managed
+    # platform tree is replaced wholesale on every update. Only the subtrees Leaf
+    # ships are touched, so anything the updater adds beside them survives.
+    source_root="$ACTIVE_PLATFORM/assets"
+    [ -d "$source_root" ] || return 0
+    for namespace in ozone xmb/monochrome pkg; do
+        [ -d "$source_root/$namespace" ] ||
+            fail "release asset bundle lacks $namespace"
+    done
+    mkdir -p "$USER_ASSETS" || fail "failed to create durable user asset root"
+
+    for namespace in ozone xmb/monochrome pkg; do
+        src="$source_root/$namespace"
+        dst="$USER_ASSETS/$namespace"
+        tmp="$dst.tmp.$$"
+        previous="$dst.previous.$$"
+        mkdir -p "$(dirname "$dst")" ||
+            fail "failed to create asset namespace parent for $namespace"
+        rm -rf "$tmp" "$previous" 2>/dev/null || true
+        cp -R "$src" "$tmp" ||
+            fail "failed to stage $namespace assets"
+        if [ -e "$dst" ]; then
+            mv "$dst" "$previous" ||
+                fail "failed to back up $namespace assets"
+        fi
+        if ! mv "$tmp" "$dst"; then
+            [ ! -e "$previous" ] || mv "$previous" "$dst" 2>/dev/null || true
+            fail "failed to promote $namespace assets"
+        fi
+        rm -rf "$previous" 2>/dev/null || true
+    done
+    log_msg "synchronized Leaf menu asset namespaces to durable user state"
+}
+
 install_runtime_files() {
     cat > "$HOOK_TMP" <<'UMRK_LEAF_HOOK_EOF'
 __HOOK__
@@ -736,6 +775,7 @@ if [ -d "$ACTIVE_PLATFORM/platform.d" ]; then
     find "$ACTIVE_PLATFORM/platform.d" -type f -exec chmod 755 {} \\; 2>/dev/null || true
 fi
 sync_leaf_shaders
+sync_leaf_assets
 log_msg "promoting managed apps"
 promote_managed_apps
 create_public_dirs
