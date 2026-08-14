@@ -13,14 +13,15 @@ env_output="$(
 
 # Project the v2 result onto the complete pre-existing v1 key set. This CRC and
 # byte count were captured from the v1 producer for the fixture roots above;
-# filtering permits only the documented version change and two new PATH-2 keys.
+# filtering permits only the documented PATH-2 additions and removal of the
+# obsolete resident-switch experiment cap.
 legacy_projection="$(
     printf '%s\n' "$env_output" |
         grep -Ev '^(_|PWD|SHLVL|UMRK_ENV_VERSION|USERDATA_PATHS|SHARED_USERDATA_PATHS)=' |
         LC_ALL=C sort |
         cksum
 )"
-[ "$legacy_projection" = "1369841018 3345" ] || {
+[ "$legacy_projection" = "3810762264 3316" ] || {
     echo "v1 runtime environment projection changed: $legacy_projection" >&2
     exit 1
 }
@@ -95,6 +96,7 @@ check_recovery_function() {
             'export SAVES_PATH=/fixture/stale/Saves' \
             'export STATES_PATH=/fixture/stale/States' \
             'export CHEATS_PATH=/fixture/stale/Cheats' \
+            'export JAWAKA_RESIDENT_SWITCH_MAX=1' \
             'export UMRK_ENV_VERSION=1' \
             'set_active_launcher_sd /fixture/recovered /fixture/unmounted-alternate' \
             'env'
@@ -127,6 +129,7 @@ check_recovery_function() {
         "CHEATS_PATHS=/fixture/recovered/Cheats:/fixture/unmounted-alternate/Cheats"; do
         printf '%s\n' "$output" | grep -F -x "$expected" >/dev/null
     done
+    ! printf '%s\n' "$output" | grep -q '^JAWAKA_RESIDENT_SWITCH_MAX='
 }
 
 check_recovery_function "$repo_dir/device/loong_pangu.wrapper"

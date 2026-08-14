@@ -137,6 +137,7 @@ set_active_launcher_sd() {
     export UMRK_ENV_VERSION=2
 
     refresh_paths
+    unset JAWAKA_RESIDENT_SWITCH_MAX
     load_env_file
     refresh_paths
 }

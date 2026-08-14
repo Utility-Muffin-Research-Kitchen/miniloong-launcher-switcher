@@ -110,6 +110,7 @@ set_active_launcher_sd() {
     export CHEATS_PATHS="$active/Cheats:$configured_secondary/Cheats"
     export UMRK_ENV_VERSION=2
 
+    unset JAWAKA_RESIDENT_SWITCH_MAX
     ENV_FILE="${UMRK_ENV_FILE:-$UMRK_LAUNCHER_PATH/env.sh}"
     if [ -f "$ENV_FILE" ]; then
         . "$ENV_FILE"
