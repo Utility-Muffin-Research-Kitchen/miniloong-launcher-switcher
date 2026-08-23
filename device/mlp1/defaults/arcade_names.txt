@@ -1292,7 +1292,19 @@ cclimbrj	Crazy Climber (Japan)
 cclimbroper	Crazy Climber (Spanish, Operamatic bootleg)
 cclimbrrod	Crazy Climber (Spanish, Rodmar bootleg)
 cdiscon1	Cassette: Disco No.1
+cdp-10001c	World Club Champion Football Serie A 2001-2002
+cdp-10002b	Sega Yonin Uchi Mahjong MJ (Update Disc Ver.1.008, Japan) (CDP-10002B)
+cdp-10003	World Club Champion Football Serie A 2001-2002 DIMM FIRM Ver.3.03
 cdsteljn	DS Telejan (DECO Cassette) (Japan)
+cdv-10002	World Club Champion Football Serie A 2002-2003 (Italy)
+cdv-10008	World Club Champion Football Serie A 2002-2003 (Japan)
+cdv-10013	World Club Champion Football European Clubs 2004-2005 (Asia)
+cdv-10015	World Club Champion Football European Clubs 2004-2005 v1.1 (Export)
+cdv-10015p	World Club Champion Football European Clubs 2004-2005 (Export)
+cdv-10020	World Club Champion Football European Clubs 2004-2005 v1.1 (Japan)
+cdv-10021	World Club Champion Football European Clubs 2004-2005 (Japan)
+cdv-10025	World Club Champion Football European Clubs 2005-2006 (Japan)
+cdv-10027	World Club Champion Football European Clubs 2005-2006 (Export)
 cencourt	Center Court (prototype)
 centipb2	Centipede (bootleg, set 1)
 centipd2	Centipede (revision 2)
@@ -3170,6 +3182,99 @@ gcpinbal	Grand Cross
 gdarius	G-Darius (JAPAN)
 gdarius2	G-Darius Ver.2 (JAPAN)
 gdfs	Mobile Suit Gundam Final Shooting (Japan)
+gdl-0001	Mobile Suit Gundam: Federation vs. Zeon
+gdl-0002	Street Fighter Zero 3 Upper
+gdl-0004	Capcom vs. SNK Millennium Fight 2000 Pro (Japan)
+gdl-0005	Doki Doki Idol Star Seeker
+gdl-0006	Mobile Suit Gundam: Federation vs. Zeon DX
+gdl-0007a	Capcom vs. SNK 2 Millionaire Fighting 2001 (Japan, Rev A)
+gdl-0008	Capcom vs. SNK 2 Mark Of The Millennium 2001 (USA)
+gdl-0010	Ikaruga
+gdl-0011	Guilty Gear XX
+gdl-0012	Cleopatra Fortune Plus
+gdl-0013	Moeru Casinyo
+gdl-0014a	Musapey's Choco Marker (Rev A)
+gdl-0017	Quiz Keitai Q mode
+gdl-0018	Azumanga Daioh Puzzle Bobble
+gdl-0019	Guilty Gear XX #Reload
+gdl-0019a	Guilty Gear XX #Reload (Rev A)
+gdl-0020	Tetris Kiwamemichi
+gdl-0021	Shikigami no Shiro II / The Castle of Shikigami II
+gdl-0022	Usagi
+gdl-0023a	Border Down
+gdl-0024	Psyvariar 2
+gdl-0025	Chaos Field
+gdl-0026	Trizeal
+gdl-0028	Melty Blood Act Cadenza
+gdl-0028c	Melty Blood Act Cadenza (Ver. A)
+gdl-0030	Senko no Ronde
+gdl-0030a	Senko no Ronde (Rev A)
+gdl-0031	Super Shanghai 2005
+gdl-0031a	Super Shanghai 2005 (Rev A)
+gdl-0032	Radirgy
+gdl-0032a	Radirgy (Rev A)
+gdl-0033a	Guilty Gear XX Slash (Rev A)
+gdl-0034	Kurukuru Chameleon
+gdl-0035	Under Defeat
+gdl-0036	Trigger Heart Exelica
+gdl-0036a	Trigger Heart Exelica (Ver. A)
+gdl-0037	Jingi Storm
+gdl-0038	Senko no Ronde Special
+gdl-0039	Melty Blood Act Cadenza (Ver. B)
+gdl-0039a	Melty Blood Act Cadenza (Ver. B2)
+gdl-0040	Karous
+gdl-0041	Guilty Gear XX Accent Core
+gdl-0042	Noukone Puzzle Takoron
+gds-0001	Confidential Mission
+gds-0002b	Shakatto Tambourine (Rev B)
+gds-0003	Sports Jam
+gds-0004	Slashout
+gds-0005	Spikers Battle
+gds-0006	Virtua Striker 3
+gds-0008	Monkey Ball
+gds-0009a	Virtua Golf / Dynamic Golf
+gds-0010	World Series Baseball / Super Major League
+gds-0011	Virtua Tennis / Power Smash
+gds-0012	Virtua Fighter 4
+gds-0012b	Virtua Fighter 4 (Rev B)
+gds-0012c	Virtua Fighter 4 (Ver. C)
+gds-0013	Shakatto Tambourine Motto Norinori Shinkyoku Tsuika (2K1 SPR)
+gds-0014	Beach Spikers
+gds-0015a	Virtua Tennis 2 / Power Smash 2
+gds-0016	Shakatto Tambourine Cho Powerup Chu (2K1 AUT)
+gds-0017	La Keyboard
+gds-0018	Lupin The Third
+gds-0018a	Lupin The Third
+gds-0019	Virtua Athletics / Virtua Athlete
+gds-0020	Initial D Arcade Stage (Japan)
+gds-0020b	Initial D Arcade Stage (Japan, Rev B)
+gds-0021a	Lupin The Third
+gds-0022	The Maze of the Kings
+gds-0024a	Virtua Fighter 4 Evolution (Japan)
+gds-0024b	Virtua Fighter 4 Evolution (Japan, Ver. B, GDS-0024B)
+gds-0024c	Virtua Fighter 4 Evolution (Japan, Ver. B)
+gds-0025	Initial D Arcade Stage (Export)
+gds-0025a	Initial D Arcade Stage (Export, Rev A)
+gds-0026	Initial D Arcade Stage 2 (Japan)
+gds-0026a	Initial D Arcade Stage 2 (Japan, Rev A)
+gds-0026b	Initial D Arcade Stage 2 (Japan, Rev B)
+gds-0027	Initial D Arcade Stage 2 (Export)
+gds-0029	Club Kart for Cycraft
+gds-0029a	Club Kart for Cycraft (Rev A)
+gds-0030a	Dragon Treasure (Rev A)
+gds-0030b	Dragon Treasure (Rev B)
+gds-0031	Puyo Puyo Fever (Japan)
+gds-0032b	Initial D Arcade Stage 3 (Japan, Rev B)
+gds-0032c	Initial D Arcade Stage 3 (Japan, Rev C)
+gds-0033	Initial D Arcade Stage 3 (Export)
+gds-0034	Puyo Pop Fever (World)
+gds-0036a	Virtua Fighter 4 Final Tuned (Rev A)
+gds-0036d	Virtua Fighter 4 Final Tuned (Ver. A)
+gds-0036f	Virtua Fighter 4 Final Tuned (Ver. B)
+gds-0037a	Dragon Treasure 2 (Rev A)
+gds-0039a	Initial D Arcade Stage 3 Cycraft Edition (Rev A)
+gds-0039b	Initial D Arcade Stage 3 Cycraft Edition (Rev B)
+gds-0041a	Dragon Treasure 3 (Rev A)
 geebee	Gee Bee
 geebeea	Gee Bee (UK)
 geebeeb	Gee Bee (Europe)
