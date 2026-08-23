@@ -96,6 +96,18 @@ check_recovery_function() {
             'export SAVES_PATH=/fixture/stale/Saves' \
             'export STATES_PATH=/fixture/stale/States' \
             'export CHEATS_PATH=/fixture/stale/Cheats' \
+            'export UMRK_RETROARCH_BIN=/fixture/stale/.system/leaf/platforms/mlp1/bin/retroarch' \
+            'export CORES_PATH=/fixture/stale/.system/leaf/platforms/mlp1/cores' \
+            'export INFO_PATH=/fixture/stale/.system/leaf/platforms/mlp1/info' \
+            'export UMRK_RETROARCH_SHADERS_DIR=/fixture/stale/.system/leaf/platforms/mlp1/shaders' \
+            'export UMRK_RETROARCH_USER_SHADERS_DIR=/fixture/stale/.umrk/mlp1/retroarch/.config/retroarch/shaders' \
+            'export UMRK_RETROARCH_CONFIG_DIR=/fixture/stale/.umrk/mlp1/retroarch/.config/retroarch/config' \
+            'export JAWAKA_SDCARD_ROOT=/fixture/stale' \
+            'export JAWAKA_RETROARCH_BIN=/fixture/stale/.system/leaf/platforms/mlp1/bin/retroarch' \
+            'export JAWAKA_RETROARCH_CORES_DIR=/fixture/stale/.system/leaf/platforms/mlp1/cores' \
+            'export CAT_THEMES_DIR=/fixture/stale/.system/leaf/platforms/mlp1/launcher/res/themes' \
+            'export CAT_FONTS_DIR=/fixture/stale/.system/leaf/platforms/mlp1/launcher/res' \
+            'export CAT_STATUS_ASSETS_DIR=/fixture/stale/.system/leaf/platforms/mlp1/launcher/res/assets' \
             'export JAWAKA_RESIDENT_SWITCH_MAX=1' \
             'export UMRK_ENV_VERSION=1' \
             'set_active_launcher_sd /fixture/recovered /fixture/unmounted-alternate' \
@@ -117,6 +129,18 @@ check_recovery_function() {
         "SAVES_PATH=/fixture/recovered/Saves" \
         "STATES_PATH=/fixture/recovered/States" \
         "CHEATS_PATH=/fixture/recovered/Cheats" \
+        "UMRK_RETROARCH_BIN=/fixture/recovered/.system/leaf/platforms/mlp1/bin/retroarch" \
+        "CORES_PATH=/fixture/recovered/.system/leaf/platforms/mlp1/cores" \
+        "INFO_PATH=/fixture/recovered/.system/leaf/platforms/mlp1/info" \
+        "UMRK_RETROARCH_SHADERS_DIR=/fixture/recovered/.system/leaf/platforms/mlp1/shaders" \
+        "UMRK_RETROARCH_USER_SHADERS_DIR=/fixture/recovered/.umrk/mlp1/retroarch/.config/retroarch/shaders" \
+        "UMRK_RETROARCH_CONFIG_DIR=/fixture/recovered/.umrk/mlp1/retroarch/.config/retroarch/config" \
+        "JAWAKA_SDCARD_ROOT=/fixture/recovered" \
+        "JAWAKA_RETROARCH_BIN=/fixture/recovered/.system/leaf/platforms/mlp1/bin/retroarch" \
+        "JAWAKA_RETROARCH_CORES_DIR=/fixture/recovered/.system/leaf/platforms/mlp1/cores" \
+        "CAT_THEMES_DIR=/fixture/recovered/.system/leaf/platforms/mlp1/launcher/res/themes" \
+        "CAT_FONTS_DIR=/fixture/recovered/.system/leaf/platforms/mlp1/launcher/res" \
+        "CAT_STATUS_ASSETS_DIR=/fixture/recovered/.system/leaf/platforms/mlp1/launcher/res/assets" \
         "UMRK_ENV_VERSION=2" \
         "ROMS_PATHS=/fixture/recovered/Roms:/fixture/unmounted-alternate/Roms" \
         "IMAGES_PATHS=/fixture/recovered/Images:/fixture/unmounted-alternate/Images" \
