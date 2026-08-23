@@ -130,6 +130,51 @@
       "legacy_flat_core": "stella2014"
     },
     {
+      "id": "ATOMISWAVE",
+      "name": "Atomiswave",
+      "patterns": [
+        "ATOMISWAVE",
+        "atomiswave"
+      ],
+      "extensions": [
+        "cdi",
+        "chd",
+        "cue",
+        "dat",
+        "gdi",
+        "iso"
+      ],
+      "archive_extensions": [
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "cdi",
+        "chd",
+        "cue",
+        "dat",
+        "gdi",
+        "iso"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u"
+      ],
+      "m3u_generation": "manual",
+      "name_map": true,
+      "default_core": "flycast_standalone",
+      "alternate_cores": [
+        "flycast",
+        "km_flycast_xtreme"
+      ],
+      "rom_root": "Roms/ATOMISWAVE",
+      "image_root": "Images/ATOMISWAVE",
+      "bios_notes": [
+        "dc/awbios.zip (user-supplied, place under BIOS)"
+      ]
+    },
+    {
       "id": "COLECO",
       "name": "ColecoVision",
       "patterns": [
@@ -205,7 +250,9 @@
       ],
       "rom_root": "Roms/DC",
       "image_root": "Images/DC",
-      "bios_notes": [],
+      "bios_notes": [
+        "dc/dc_boot.bin (optional/recommended, user-supplied, place under BIOS)"
+      ],
       "legacy_flat_core": "flycast"
     },
     {
@@ -848,6 +895,53 @@
       "legacy_flat_core": "mupen64plus_next"
     },
     {
+      "id": "NAOMI",
+      "name": "Sega Naomi",
+      "patterns": [
+        "NAOMI",
+        "naomi"
+      ],
+      "extensions": [
+        "cdi",
+        "chd",
+        "cue",
+        "dat",
+        "gdi",
+        "iso"
+      ],
+      "archive_extensions": [
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "cdi",
+        "chd",
+        "cue",
+        "dat",
+        "gdi",
+        "iso"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u"
+      ],
+      "m3u_generation": "manual",
+      "name_map": true,
+      "default_core": "flycast_standalone",
+      "alternate_cores": [
+        "flycast",
+        "km_flycast_xtreme"
+      ],
+      "rom_root": "Roms/NAOMI",
+      "image_root": "Images/NAOMI",
+      "bios_notes": [
+        "dc/naomi.zip for Naomi and Naomi GD-ROM (user-supplied, place under BIOS)",
+        "dc/naomi2.zip for Naomi 2 (user-supplied, place under BIOS)",
+        "dc/airlbios.zip, dc/f355bios.zip, dc/f355dlx.zip, or dc/hod2bios.zip when required by a game"
+      ]
+    },
+    {
       "id": "NDS",
       "name": "Nintendo DS",
       "patterns": [
@@ -984,6 +1078,69 @@
       "image_root": "Images/NGPC",
       "bios_notes": [],
       "legacy_flat_core": "mednafen_ngp"
+    },
+    {
+      "id": "PC98",
+      "name": "NEC PC-98",
+      "patterns": [
+        "PC98",
+        "pc98",
+        "necpc98",
+        "NECPC98"
+      ],
+      "extensions": [
+        "2hd",
+        "88d",
+        "98d",
+        "cmd",
+        "d88",
+        "d98",
+        "dup",
+        "fdd",
+        "fdi",
+        "hdd",
+        "hdi",
+        "hdm",
+        "hdn",
+        "nhd",
+        "tfd",
+        "thd",
+        "xdf"
+      ],
+      "archive_extensions": [
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "2hd",
+        "88d",
+        "98d",
+        "cmd",
+        "d88",
+        "d98",
+        "dup",
+        "fdd",
+        "fdi",
+        "hdd",
+        "hdi",
+        "hdm",
+        "hdn",
+        "nhd",
+        "tfd",
+        "thd",
+        "xdf"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [],
+      "m3u_generation": "none",
+      "default_core": "np2kai",
+      "alternate_cores": [],
+      "rom_root": "Roms/PC98",
+      "image_root": "Images/PC98",
+      "bios_notes": [
+        "np2kai/font.bmp or np2kai/FONT.ROM (needed for text, place under BIOS)"
+      ]
     },
     {
       "id": "PCE",
