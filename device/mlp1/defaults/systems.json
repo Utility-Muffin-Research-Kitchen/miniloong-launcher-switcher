@@ -162,6 +162,7 @@
         "m3u"
       ],
       "m3u_generation": "manual",
+      "name_map": true,
       "default_core": "flycast_standalone",
       "alternate_cores": [
         "flycast",
@@ -926,6 +927,7 @@
         "m3u"
       ],
       "m3u_generation": "manual",
+      "name_map": true,
       "default_core": "flycast_standalone",
       "alternate_cores": [
         "flycast",
