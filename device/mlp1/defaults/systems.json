@@ -52,6 +52,71 @@
       "legacy_flat_core": "genesis_plus_gx"
     },
     {
+      "id": "AMIGA",
+      "name": "Amiga",
+      "patterns": [
+        "AMIGA",
+        "Amiga",
+        "amiga",
+        "amiga500",
+        "amiga1200"
+      ],
+      "extensions": [
+        "adf",
+        "adz",
+        "ccd",
+        "chd",
+        "cue",
+        "dms",
+        "fdi",
+        "hdf",
+        "hdz",
+        "iso",
+        "lha",
+        "mds",
+        "nrg",
+        "raw",
+        "rp9",
+        "uae"
+      ],
+      "archive_extensions": [
+        "7z",
+        "zip"
+      ],
+      "archive_inner_extensions": [
+        "adf",
+        "adz",
+        "ccd",
+        "chd",
+        "cue",
+        "dms",
+        "fdi",
+        "hdf",
+        "hdz",
+        "iso",
+        "lha",
+        "mds",
+        "nrg",
+        "raw",
+        "rp9",
+        "uae"
+      ],
+      "archive_mode": "pass_through",
+      "file_names": [],
+      "ignore_file_names": [],
+      "playlist_extensions": [
+        "m3u"
+      ],
+      "m3u_generation": "manual",
+      "default_core": "puae",
+      "alternate_cores": [],
+      "rom_root": "Roms/AMIGA",
+      "image_root": "Images/AMIGA",
+      "bios_notes": [
+        "puae/Kickstart ROMs and rom.key when required (user-supplied, place under BIOS)"
+      ]
+    },
+    {
       "id": "ARCADE",
       "name": "Arcade",
       "patterns": [
