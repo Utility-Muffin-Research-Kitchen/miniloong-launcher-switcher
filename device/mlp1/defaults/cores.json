@@ -991,6 +991,44 @@
       "status": "packaged"
     },
     {
+      "id": "puae",
+      "display_name": "PUAE",
+      "type": "retroarch",
+      "libretro_name": "puae",
+      "file_name": "puae_libretro.so",
+      "config_folder": "PUAE",
+      "info_name": "puae_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "requires_direct_drm": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
+      "id": "puae2021",
+      "display_name": "PUAE 2021",
+      "type": "retroarch",
+      "libretro_name": "puae2021",
+      "file_name": "puae2021_libretro.so",
+      "config_folder": "PUAE 2021",
+      "info_name": "puae2021_libretro.info",
+      "path": null,
+      "supports_menu": true,
+      "supports_savestate": true,
+      "supports_disk_control": true,
+      "needs_swap": false,
+      "requires_direct_drm": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
       "id": "quicknes",
       "display_name": "QuickNES",
       "type": "retroarch",
