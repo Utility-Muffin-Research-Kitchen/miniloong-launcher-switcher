@@ -524,10 +524,19 @@ STRAGGLER_STOP_TIMEOUT_S="${STRAGGLER_STOP_TIMEOUT_S:-3}"
 # the Leaf daemon lives under a Leaf platform root.
 leaf_daemon_pids() {
     out=""
-    for pid in $(pidof loong_pangu 2>/dev/null || true); do
+    for pid in $(pidof loong_pangu 2>/dev/null || true) $(pidof jawakad 2>/dev/null || true); do
         [ "$pid" = "$$" ] && continue
+        # Match the DIRECTORY, not the file name. pidof already narrowed by
+        # process name, which is fixed at exec time; this check exists only to
+        # exclude the stock launcher, which lives at /loong or under
+        # $STOCK_RUN_DIR and shares the basename. Matching an exact executable
+        # path instead would miss a daemon whose binary has since moved: Leaf
+        # staging does `rm -rf` on the live launcher directory, after which the
+        # exe link reads ".../loong_pangu (deleted)", and a rename would leave
+        # a different basename entirely. Both still resolve under the Leaf
+        # platform root, which is the part that actually identifies it.
         case "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" in
-            */.system/leaf/*/loong_pangu) out="$out $pid" ;;
+            */.system/leaf/*) out="$out $pid" ;;
         esac
     done
     printf '%s' "$out" | sed 's/^ //'
