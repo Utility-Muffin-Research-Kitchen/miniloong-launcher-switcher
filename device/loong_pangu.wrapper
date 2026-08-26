@@ -408,37 +408,120 @@ exec_stock() {
     exec "$STOCK" "$@"
 }
 
-kill_stale_custom_launcher() {
+# Ceiling for the Leaf daemon's own orderly shutdown. It must exceed its worst
+# case, which is dominated by the RetroArch app tile's 9s stop grace plus
+# service teardown. A measured MLP1 stop with the app tile open takes about 2s;
+# this is only the bound for a wedged one.
+JAWAKAD_STOP_TIMEOUT_S="${JAWAKAD_STOP_TIMEOUT_S:-15}"
+# Anything still alive after jawakad has gone is a straggler, not a writer.
+STRAGGLER_STOP_TIMEOUT_S="${STRAGGLER_STOP_TIMEOUT_S:-3}"
+
+# The daemon is deployed as loong_pangu -- jawakad renamed -- so `pidof jawakad`
+# finds nothing on a real device, and `pidof loong_pangu` cannot tell the Leaf
+# daemon from the stock launcher (which runs as $STOCK_RUN_DIR/loong_pangu) or
+# from this wrapper. Match on the executable path instead: only the Leaf daemon
+# lives under a Leaf platform root. Reading /proc also skips this shell, whose
+# exe is the interpreter, so the cleanup can never signal itself.
+leaf_daemon_pids() {
+    out=""
+    # pidof narrows to the handful of candidates in the kernel; the exe check
+    # then runs a couple of times rather than once per process on the system.
+    # Walking all of /proc from the shell instead cost seconds on this SoC, on
+    # a path that runs at every boot.
+    for pid in $(pidof loong_pangu 2>/dev/null || true); do
+        [ "$pid" = "$$" ] && continue
+        case "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" in
+            */.system/leaf/*/loong_pangu) out="$out $pid" ;;
+        esac
+    done
+    printf '%s' "$out" | sed 's/^ //'
+}
+
+leaf_pids() {
+    out="$(leaf_daemon_pids)"
+    # jawakad by name as well: leaf_daemon_pids covers the deployed
+    # loong_pangu, but a dev build can be staged under its real name.
     for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
         pids="$(pidof "$name" 2>/dev/null || true)"
-        if [ -n "$pids" ]; then
-            log_msg "stopping stale $name pids=$pids"
-            kill $pids 2>/dev/null || true
-        fi
+        [ -n "$pids" ] && out="$out $pids"
     done
     if command -v pgrep >/dev/null 2>&1; then
         pids="$(pgrep -f jawaka-retroarch-runner 2>/dev/null || true)"
-        if [ -n "$pids" ]; then
-            log_msg "stopping stale jawaka-retroarch-runner pids=$pids"
-            kill $pids 2>/dev/null || true
+        [ -n "$pids" ] && out="$out $pids"
+    fi
+    printf '%s' "$out" | tr -s ' ' | sed 's/^ //;s/ $//'
+}
+
+# Filter a pid list down to those still alive.
+pids_alive() {
+    out=""
+    for p in "$@"; do
+        [ -n "$p" ] && kill -0 "$p" 2>/dev/null && out="$out $p"
+    done
+    printf '%s' "$out" | sed 's/^ //'
+}
+
+# Bounded poll on a FIXED pid list. $1 = ceiling in seconds, $2.. = pids.
+# Returns 0 once they are all gone, 1 on timeout. The deadline is wall-clock,
+# so the ceiling holds whether or not this shell can sleep in fractions -- no
+# caller here can hang.
+wait_pids_gone() {
+    _deadline=$(( $(date +%s) + $1 ))
+    shift
+    while [ -n "$(pids_alive "$@")" ]; do
+        [ "$(date +%s)" -ge "$_deadline" ] && return 1
+        sleep 0.2 2>/dev/null || sleep 1
+    done
+    return 0
+}
+
+# Stop a previous Leaf generation without destroying the work it has in flight.
+#
+# jawakad owns an orderly shutdown: it asks the RetroArch app runner to stop,
+# gives it time to quit RetroArch over the command port and copy the shared
+# RetroArch config back to the SD card, and only then exits. Signalling
+# jawakad, retroarch and the runner all at once and force-killing them one
+# second later pre-empted exactly that. A measured MLP1 app-tile stop takes
+# about 1.5s end to end, so the old SIGKILL landed in the middle of RetroArch's
+# save or the copy-back that follows it, and the session's RetroArch settings
+# were lost (Leaf#48).
+#
+# So ask jawakad first and wait for it. Whatever is still alive afterwards is a
+# genuine straggler -- jawakad was never running, or it failed to take its
+# children with it -- and is stopped the blunt way.
+kill_stale_custom_launcher() {
+    # Snapshot first, and never signal anything outside it. Stopping the daemon
+    # can take seconds, and loong_service respawns the home launcher when it
+    # dies, so a list re-read after the wait can contain the INCOMING
+    # generation. An earlier revision of this did exactly that and killed the
+    # launcher that was starting up.
+    stale="$(leaf_pids)"
+    if [ -z "$stale" ]; then
+        return 0
+    fi
+
+    daemons="$(leaf_daemon_pids)"
+    if [ -n "$daemons" ]; then
+        log_msg "stopping Leaf daemon pids=$daemons (allowing up to ${JAWAKAD_STOP_TIMEOUT_S}s to save)"
+        kill $daemons 2>/dev/null || true
+        if wait_pids_gone "$JAWAKAD_STOP_TIMEOUT_S" $daemons; then
+            log_msg "Leaf daemon exited cleanly"
+        else
+            log_msg "Leaf daemon did not exit within ${JAWAKAD_STOP_TIMEOUT_S}s; forcing survivors"
         fi
     fi
 
-    sleep 1
+    pids="$(pids_alive $stale)"
+    if [ -n "$pids" ]; then
+        log_msg "stopping stale launcher processes pids=$pids"
+        kill $pids 2>/dev/null || true
+        wait_pids_gone "$STRAGGLER_STOP_TIMEOUT_S" $pids || true
+    fi
 
-    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch; do
-        pids="$(pidof "$name" 2>/dev/null || true)"
-        if [ -n "$pids" ]; then
-            log_msg "force stopping stale $name pids=$pids"
-            kill -9 $pids 2>/dev/null || true
-        fi
-    done
-    if command -v pgrep >/dev/null 2>&1; then
-        pids="$(pgrep -f jawaka-retroarch-runner 2>/dev/null || true)"
-        if [ -n "$pids" ]; then
-            log_msg "force stopping stale jawaka-retroarch-runner pids=$pids"
-            kill -9 $pids 2>/dev/null || true
-        fi
+    pids="$(pids_alive $stale)"
+    if [ -n "$pids" ]; then
+        log_msg "force stopping stale launcher processes pids=$pids"
+        kill -9 $pids 2>/dev/null || true
     fi
 }
 
