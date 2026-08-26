@@ -108,8 +108,10 @@
         "m3u"
       ],
       "m3u_generation": "manual",
-      "default_core": "puae",
-      "alternate_cores": [],
+      "default_core": "puae2021",
+      "alternate_cores": [
+        "puae"
+      ],
       "rom_root": "Roms/AMIGA",
       "image_root": "Images/AMIGA",
       "bios_notes": [
