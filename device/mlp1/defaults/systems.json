@@ -1477,6 +1477,7 @@
       "m3u_generation": "manual",
       "default_core": "yabasanshiro",
       "alternate_cores": [
+        "yabasanshiro_standalone",
         "yabasanshiro_a133p",
         "yabasanshiro_smartpros"
       ],
