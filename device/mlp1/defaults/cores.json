@@ -1295,6 +1295,25 @@
       "status": "packaged"
     },
     {
+      "id": "yabasanshiro_standalone",
+      "display_name": "YabaSanshiro Standalone",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": "YabaSanshiro Standalone",
+      "info_name": null,
+      "path": "emulators/yabasanshiro/launch.sh",
+      "supports_menu": true,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "requires_direct_drm": true,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged"
+    },
+    {
       "id": "yabasanshiro_a133p",
       "display_name": "Yabasanshiro A133p",
       "type": "retroarch",
