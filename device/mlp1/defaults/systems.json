@@ -1033,10 +1033,15 @@
       "playlist_extensions": [],
       "m3u_generation": "none",
       "default_core": "drastic",
-      "alternate_cores": [],
+      "alternate_cores": [
+        "fun_drastic"
+      ],
       "rom_root": "Roms/NDS",
       "image_root": "Images/NDS",
-      "bios_notes": []
+      "bios_notes": [
+        "Both Nintendo DS emulators bundle DraStic's own free replacement BIOS, so no BIOS file of your own is needed to play.",
+        "A few games refuse to start without the original Nintendo BIOS, and the DS firmware settings need the firmware dump. Put nds_bios_arm7.bin (16 KB), nds_bios_arm9.bin (4 KB) and nds_firmware.bin in BIOS/NDS."
+      ]
     },
     {
       "id": "NEOGEO",

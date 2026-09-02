@@ -269,6 +269,25 @@
       "status": "packaged"
     },
     {
+      "id": "fun_drastic",
+      "display_name": "Fun DraStic",
+      "type": "path",
+      "libretro_name": null,
+      "file_name": null,
+      "config_folder": null,
+      "info_name": null,
+      "path": "emulators/fun-drastic/launch.sh",
+      "supports_menu": true,
+      "supports_savestate": false,
+      "supports_disk_control": false,
+      "needs_swap": false,
+      "platforms": [
+        "mlp1"
+      ],
+      "status": "packaged",
+      "requires_direct_drm": false
+    },
+    {
       "id": "gambatte",
       "display_name": "Gambatte",
       "type": "retroarch",
