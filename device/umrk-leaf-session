@@ -510,6 +510,28 @@ stop_audio_spk_keeper() {
     [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
 }
 
+stop_wifi_workers() {
+    for wifi_worker in boot-worker resume-watch; do
+        case "$wifi_worker" in
+            boot-worker) wifi_pidfile="$TMPDIR/umrk-wifi-dhcpv4.pid" ;;
+            resume-watch) wifi_pidfile="$TMPDIR/umrk-wifi-resume-watch.pid" ;;
+        esac
+        wifi_pid="$(cat "$wifi_pidfile" 2>/dev/null || true)"
+        rm -f "$wifi_pidfile" 2>/dev/null || true
+        case "$wifi_pid" in ''|*[!0-9]*) continue ;; esac
+        # Match the script and worker mode, not just a possibly reused PID.
+        case "$(tr '\0' '\n' 2>/dev/null < "/proc/$wifi_pid/cmdline")" in
+            *"/00-wifi-dhcpv4.sh
+--$wifi_worker")
+                log_msg "stopping Wi-Fi $wifi_worker pid=$wifi_pid"
+                kill "$wifi_pid" 2>/dev/null || true
+                sleep .2
+                [ -d "/proc/$wifi_pid" ] && kill -9 "$wifi_pid" 2>/dev/null || true
+                ;;
+        esac
+    done
+}
+
 # Ceiling for the Leaf daemon's own orderly shutdown. It must exceed the
 # daemon's worst case, which is dominated by the RetroArch app tile's 9s stop
 # grace plus service teardown. A measured MLP1 stop with the app tile open takes
@@ -931,6 +953,7 @@ pass_to_stock() {
     stop_boot_transition
     restore_stock_boot_animation || true
     stop_audio_spk_keeper
+    stop_wifi_workers
     kill_stale_custom_launcher
     stop_leaf_owned_loong
     restore_stock_rumble
@@ -948,6 +971,7 @@ leaf_stop() {
     log_msg "leaf stop requested"
     stop_boot_transition
     stop_audio_spk_keeper
+    stop_wifi_workers
     kill_stale_custom_launcher
     stop_leaf_owned_loong
     exit 0

@@ -22,13 +22,13 @@ IFACE="${UMRK_WIFI_IFACE:-wlan0}"
 WAIT_SECONDS="${UMRK_WIFI_DHCP_WAIT_SECONDS:-75}"
 GRACE_SECONDS="${UMRK_WIFI_DHCP_GRACE_SECONDS:-12}"
 DHCP_TRIES="${UMRK_WIFI_DHCP_TRIES:-20}"
-PIDFILE="/tmp/umrk-wifi-dhcpv4.pid"
+PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.pid"
 # Off-intent marker written by Jawaka when the user turns Wi-Fi off. Persists in
 # the platform state dir so the radio stays off across reboots.
 WIFI_DISABLED_MARKER="${UMRK_WIFI_DISABLED_MARKER:-${UMRK_INTERNAL_DATA_PATH:-}/wifi-disabled}"
 # Resume-watch tunables. Kept separate from the boot-path ones above so a
 # device profile can tune association wait vs. resume settle independently.
-RESUME_PIDFILE="/tmp/umrk-wifi-resume-watch.pid"
+RESUME_PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-resume-watch.pid"
 RESUME_SETTLE_SECONDS="${UMRK_WIFI_RESUME_SETTLE_SECONDS:-20}"
 RESUME_MARK="PM: suspend exit"
 # This device's deep suspend resets CLOCK_MONOTONIC to near-zero on resume
@@ -93,13 +93,36 @@ enforce_wifi_off() {
 # initial lease request and every resume-triggered renewal so a stale client
 # from a prior association (or a prior resume) never races a fresh one.
 kill_stale_udhcpc() {
-    pids="$(pgrep -f "udhcpc .*-i $IFACE" 2>/dev/null || true)"
-    [ -n "$pids" ] && kill $pids 2>/dev/null || true
+    for dhcp_pid in $(pidof udhcpc 2>/dev/null); do
+        case " $(tr '\0' ' ' 2>/dev/null < "/proc/$dhcp_pid/cmdline")" in
+            *" -i $IFACE "*|*" -i$IFACE "*) kill "$dhcp_pid" 2>/dev/null || true ;;
+        esac
+    done
+}
+
+# Recheck throughout recovery: the UI may have stopped the radio while a
+# foreground command was running. Undo any overlapping interface/daemon start.
+wifi_recovery_allowed() {
+    if wifi_off_intended; then
+        enforce_wifi_off
+        return 1
+    fi
+    return 0
+}
+
+worker_running() {
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    case "$(tr '\0' '\n' 2>/dev/null < "/proc/$1/cmdline")" in
+        *"/00-wifi-dhcpv4.sh
+$2") return 0 ;;
+    esac
+    return 1
 }
 
 run_worker() {
     i=0
-    trap 'rm -f "$PIDFILE"' EXIT INT TERM
+    trap 'rm -f "$PIDFILE"' EXIT
+    trap 'exit 0' INT TERM
 
     if ! command -v ip >/dev/null 2>&1 ||
        ! command -v wpa_cli >/dev/null 2>&1 ||
@@ -109,6 +132,7 @@ run_worker() {
     fi
 
     while [ "$i" -lt "$WAIT_SECONDS" ]; do
+        wifi_recovery_allowed || return 0
         if has_ipv4; then
             echo "wifi-dhcpv4: $IFACE already has IPv4"
             return 0
@@ -137,6 +161,7 @@ run_worker() {
     i=0
     while [ "$i" -lt "$GRACE_SECONDS" ]; do
         sleep 1
+        wifi_recovery_allowed || return 0
         if has_ipv4; then
             echo "wifi-dhcpv4: $IFACE got IPv4 from stock DHCP during grace period"
             return 0
@@ -145,6 +170,8 @@ run_worker() {
     done
 
     echo "wifi-dhcpv4: requesting DHCPv4 lease on $IFACE"
+    kill_stale_udhcpc
+    wifi_recovery_allowed || return 0
     udhcpc -t "$DHCP_TRIES" -n -i "$IFACE"
     rc=$?
 
@@ -176,16 +203,19 @@ run_worker() {
 # later daemon restart would just reload the same disabled entry off disk
 # and undo this.
 reenable_all_networks() {
-    wpa_cli -i "$IFACE" enable_network all >/dev/null 2>&1
-    wpa_cli -i "$IFACE" save_config >/dev/null 2>&1
+    wifi_recovery_allowed || return 1
+    wpa_cli -i "$IFACE" enable_network all >/dev/null 2>&1 || true
+    wifi_recovery_allowed || return 1
+    wpa_cli -i "$IFACE" save_config >/dev/null 2>&1 || true
 }
 
 # Nudge a wedged wpa_supplicant back into scanning/associating without a full
 # restart. Cheap, and sufficient for the milder cases.
 kick_reconnect() {
     echo "wifi-dhcpv4: resume: $IFACE stuck in $(wpa_state); nudging with wpa_cli reconnect"
-    reenable_all_networks
-    wpa_cli -i "$IFACE" reconnect >/dev/null 2>&1
+    reenable_all_networks || return 1
+    wifi_recovery_allowed || return 1
+    wpa_cli -i "$IFACE" reconnect >/dev/null 2>&1 || true
 }
 
 # Full reset: wpa_supplicant's scan/retry timers are scheduled off
@@ -206,14 +236,18 @@ kick_reconnect() {
 # so it runs first, before wpa_supplicant is restarted against a clean
 # interface.
 reset_wifi_interface() {
+    wifi_recovery_allowed || return 1
     echo "wifi-dhcpv4: resume: cycling $IFACE to clear driver-level scan state"
     ip link set "$IFACE" down 2>/dev/null || true
     sleep 2
+    wifi_recovery_allowed || return 1
     ip link set "$IFACE" up 2>/dev/null || true
     sleep 2
+    wifi_recovery_allowed
 }
 
 restart_wpa_supplicant() {
+    wifi_recovery_allowed || return 1
     echo "wifi-dhcpv4: resume: $IFACE still stuck in $(wpa_state) after reconnect kick; restarting wpa_supplicant"
     pids="$(pidof wpa_supplicant 2>/dev/null || true)"
     [ -n "$pids" ] && kill $pids 2>/dev/null || true
@@ -222,8 +256,21 @@ restart_wpa_supplicant() {
         sleep 1
         i=$((i + 1))
     done
-    reset_wifi_interface
-    wpa_supplicant -B -i "$IFACE" -c "$WPA_SUPPLICANT_CONF" -P "$WPA_SUPPLICANT_PIDFILE" >/dev/null 2>&1
+    pids="$(pidof wpa_supplicant 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+        kill -9 $pids 2>/dev/null || true
+        sleep 1
+        if [ -n "$(pidof wpa_supplicant 2>/dev/null || true)" ]; then
+            echo "wifi-dhcpv4: resume: old wpa_supplicant did not exit; aborting restart"
+            return 1
+        fi
+    fi
+    reset_wifi_interface || return 1
+    wifi_recovery_allowed || return 1
+    if ! wpa_supplicant -B -i "$IFACE" -c "$WPA_SUPPLICANT_CONF" -P "$WPA_SUPPLICANT_PIDFILE" >/dev/null 2>&1; then
+        echo "wifi-dhcpv4: resume: wpa_supplicant start failed; retrying after settle"
+    fi
+    wifi_recovery_allowed
 }
 
 # Force a fresh DHCPv4 lease after a resume, regardless of whether $IFACE
@@ -238,10 +285,11 @@ resume_reconnect() {
     # network that was active before suspend got disabled by a select_network
     # elsewhere (e.g. switching to/from a different saved network), nothing
     # below this line would ever be able to reconnect to it otherwise.
-    reenable_all_networks
+    reenable_all_networks || return 0
 
     i=0
     while [ "$i" -lt "$RESUME_SETTLE_SECONDS" ]; do
+        wifi_recovery_allowed || return 0
         [ "$(wpa_state)" = "COMPLETED" ] && break
         sleep 1
         i=$((i + 1))
@@ -259,22 +307,20 @@ resume_reconnect() {
     # "needed an explicit nudge" without having to know which one it is.
     attempt=0
     while [ "$(wpa_state)" != "COMPLETED" ] && [ "$total_elapsed" -lt "$MAX_RECOVERY_SECONDS" ]; do
-        if wifi_off_intended; then
-            echo "wifi-dhcpv4: resume: Wi-Fi turned off mid-recovery; stopping retries"
-            return 0
-        fi
+        wifi_recovery_allowed || return 0
 
         attempt=$((attempt + 1))
         if [ "$attempt" -eq 1 ]; then
-            kick_reconnect
+            kick_reconnect || return 0
             wait_secs="$RECONNECT_KICK_SECONDS"
         else
-            restart_wpa_supplicant
+            restart_wpa_supplicant || return 0
             wait_secs="$RESTART_SETTLE_SECONDS"
         fi
 
         i=0
         while [ "$i" -lt "$wait_secs" ]; do
+            wifi_recovery_allowed || return 0
             [ "$(wpa_state)" = "COMPLETED" ] && break
             sleep 1
             i=$((i + 1))
@@ -290,6 +336,7 @@ resume_reconnect() {
 
     echo "wifi-dhcpv4: resume: $IFACE reassociated after ${total_elapsed}s ($attempt recovery attempt(s)); renewing DHCPv4 lease"
     kill_stale_udhcpc
+    wifi_recovery_allowed || return 0
     udhcpc -t "$DHCP_TRIES" -n -i "$IFACE"
     rc=$?
 
@@ -308,7 +355,8 @@ resume_reconnect() {
 # the hook is (re)started while the system is already up) before blocking on
 # genuinely new records — a spurious extra renewal from that is harmless.
 resume_watch_loop() {
-    trap 'rm -f "$RESUME_PIDFILE"' EXIT INT TERM
+    trap 'rm -f "$RESUME_PIDFILE"' EXIT
+    trap 'exit 0' INT TERM
 
     if ! command -v ip >/dev/null 2>&1 ||
        ! command -v wpa_cli >/dev/null 2>&1 ||
@@ -332,23 +380,27 @@ resume_watch_loop() {
     done < /dev/kmsg
 }
 
-# Honor the off-intent before doing any DHCP work: keep the radio off and bail.
+# Separate invocations give each worker an identifiable /proc command line.
+case "${1:-}" in
+    --boot-worker) run_worker; exit 0 ;;
+    --resume-watch) resume_watch_loop; exit 0 ;;
+esac
+
+# The watcher must exist even when booting with Wi-Fi off: enabling the radio
+# later does not rerun platform hooks. Only the boot lease request is skipped.
 if wifi_off_intended; then
     enforce_wifi_off
-    exit 0
+else
+    old_pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+    if ! worker_running "$old_pid" --boot-worker; then
+        "$0" --boot-worker &
+        echo "$!" > "$PIDFILE" 2>/dev/null || true
+    fi
 fi
-
-old_pid="$(cat "$PIDFILE" 2>/dev/null || true)"
-if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
-    exit 0
-fi
-
-run_worker &
-echo "$!" > "$PIDFILE" 2>/dev/null || true
 
 old_resume_pid="$(cat "$RESUME_PIDFILE" 2>/dev/null || true)"
-if [ -z "$old_resume_pid" ] || [ ! -d "/proc/$old_resume_pid" ]; then
-    resume_watch_loop &
+if ! worker_running "$old_resume_pid" --resume-watch; then
+    "$0" --resume-watch &
     echo "$!" > "$RESUME_PIDFILE" 2>/dev/null || true
 fi
 
