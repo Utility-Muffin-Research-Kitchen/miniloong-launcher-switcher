@@ -17,12 +17,16 @@
 # run once per session start (see run_platform_hooks in umrk-leaf-session), so
 # resume_watch_loop below is a long-lived background daemon rather than a
 # one-shot check, watching for the kernel's own resume record on /dev/kmsg.
+# link_watch_loop also handles successful connections while awake, keeping
+# saved profiles eligible for failover and refreshing the lease on each link.
 
 IFACE="${UMRK_WIFI_IFACE:-wlan0}"
 WAIT_SECONDS="${UMRK_WIFI_DHCP_WAIT_SECONDS:-75}"
 GRACE_SECONDS="${UMRK_WIFI_DHCP_GRACE_SECONDS:-12}"
 DHCP_TRIES="${UMRK_WIFI_DHCP_TRIES:-20}"
 PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.pid"
+DHCP_LOCK="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.lock"
+LINK_PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-link-watch.pid"
 # Off-intent marker written by Jawaka when the user turns Wi-Fi off. Persists in
 # the platform state dir so the radio stays off across reboots.
 WIFI_DISABLED_MARKER="${UMRK_WIFI_DISABLED_MARKER:-${UMRK_INTERNAL_DATA_PATH:-}/wifi-disabled}"
@@ -119,6 +123,29 @@ $2") return 0 ;;
     return 1
 }
 
+# Serialize our boot, resume and connection-event requests. Close the lock FD
+# in udhcpc: its lease-renewal daemon must not retain the lock after we return.
+renew_ipv4() (
+    flock -x 9 || exit 1
+    wifi_recovery_allowed || exit 0
+    [ "$(wpa_state)" = "COMPLETED" ] || exit 0
+    [ "$1" != boot ] || ! has_ipv4 || exit 0
+    echo "wifi-dhcpv4: $1: requesting DHCPv4 lease on $IFACE"
+    kill_stale_udhcpc
+    wifi_recovery_allowed || exit 0
+    udhcpc -t "$DHCP_TRIES" -n -i "$IFACE" 9>&-
+    rc=$?
+
+    if [ "$rc" -eq 0 ] && has_ipv4; then
+        echo "wifi-dhcpv4: $1: IPv4 ready on $IFACE"
+        ip -4 addr show "$IFACE" 2>/dev/null | sed "s/^/wifi-dhcpv4: $1: /"
+        ip -4 route 2>/dev/null | sed "s/^/wifi-dhcpv4: $1: /"
+    else
+        echo "wifi-dhcpv4: $1: DHCPv4 did not install an address on $IFACE (rc=$rc)"
+        dump_wifi_diag "$1-dhcp-fail"
+    fi
+) 9>"$DHCP_LOCK"
+
 run_worker() {
     i=0
     trap 'rm -f "$PIDFILE"' EXIT
@@ -126,8 +153,9 @@ run_worker() {
 
     if ! command -v ip >/dev/null 2>&1 ||
        ! command -v wpa_cli >/dev/null 2>&1 ||
-       ! command -v udhcpc >/dev/null 2>&1; then
-        echo "wifi-dhcpv4: missing ip, wpa_cli, or udhcpc; skipping"
+       ! command -v udhcpc >/dev/null 2>&1 ||
+       ! command -v flock >/dev/null 2>&1; then
+        echo "wifi-dhcpv4: missing ip, wpa_cli, udhcpc, or flock; skipping"
         return 0
     fi
 
@@ -169,20 +197,7 @@ run_worker() {
         i=$((i + 1))
     done
 
-    echo "wifi-dhcpv4: requesting DHCPv4 lease on $IFACE"
-    kill_stale_udhcpc
-    wifi_recovery_allowed || return 0
-    udhcpc -t "$DHCP_TRIES" -n -i "$IFACE"
-    rc=$?
-
-    if has_ipv4; then
-        echo "wifi-dhcpv4: IPv4 ready on $IFACE"
-        ip -4 addr show "$IFACE" 2>/dev/null | sed 's/^/wifi-dhcpv4: /'
-        ip -4 route 2>/dev/null | sed 's/^/wifi-dhcpv4: /'
-    else
-        echo "wifi-dhcpv4: DHCPv4 did not install an address on $IFACE (rc=$rc)"
-        dump_wifi_diag "dhcp-fail"
-    fi
+    renew_ipv4 boot
 }
 
 # Jawaka's own manual "connect to this network" path (jw_wifi_connect in
@@ -335,18 +350,52 @@ resume_reconnect() {
     fi
 
     echo "wifi-dhcpv4: resume: $IFACE reassociated after ${total_elapsed}s ($attempt recovery attempt(s)); renewing DHCPv4 lease"
-    kill_stale_udhcpc
-    wifi_recovery_allowed || return 0
-    udhcpc -t "$DHCP_TRIES" -n -i "$IFACE"
-    rc=$?
+    renew_ipv4 resume
+}
 
-    if has_ipv4; then
-        echo "wifi-dhcpv4: resume: IPv4 ready on $IFACE"
-        ip -4 addr show "$IFACE" 2>/dev/null | sed 's/^/wifi-dhcpv4: resume: /'
-    else
-        echo "wifi-dhcpv4: resume: DHCPv4 did not install an address on $IFACE (rc=$rc)"
-        dump_wifi_diag "resume-dhcp-fail"
+# select_network disables other saved profiles while a manual join is pending.
+# Re-enable them only after association succeeds, so the chosen network gets
+# its join attempt and subsequent loss can fall back to another saved profile.
+# CONNECTED also covers automatic failover while a game or another app is open.
+connection_event() {
+    wifi_recovery_allowed || return 0
+    [ "$(wpa_state)" = "COMPLETED" ] || return 0
+    reenable_all_networks || return 0
+    renew_ipv4 connection
+}
+
+stop_link_listener() {
+    # The listener and any in-flight callback share a private process group.
+    # Stop both so a queued callback cannot run after Leaf hands off to stock.
+    if [ -n "${link_cli_pid:-}" ]; then
+        kill -TERM -- "-$link_cli_pid" 2>/dev/null || true
+        kill -KILL -- "-$link_cli_pid" 2>/dev/null || true
     fi
+    rm -f "$LINK_PIDFILE"
+}
+
+link_watch_loop() {
+    trap stop_link_listener EXIT
+    trap 'exit 0' INT TERM
+    if ! command -v setsid >/dev/null 2>&1 ||
+       ! command -v flock >/dev/null 2>&1 ||
+       ! command -v wpa_cli >/dev/null 2>&1 ||
+       ! command -v udhcpc >/dev/null 2>&1 ||
+       ! command -v ip >/dev/null 2>&1; then
+        echo "wifi-dhcpv4: link-watch: missing setsid, flock, wpa_cli, udhcpc, or ip; not watching"
+        return 0
+    fi
+
+    # -r reattaches after radio-off or a resume-time supplicant restart.
+    echo "wifi-dhcpv4: link-watch: monitoring connections on $IFACE"
+    setsid wpa_cli -r -i "$IFACE" -a "$0" &
+    link_cli_pid=$!
+    # The listener does not synthesize CONNECTED for an existing connection.
+    # Keep it eligible for failover; the boot worker handles its initial lease.
+    if wifi_recovery_allowed && [ "$(wpa_state)" = "COMPLETED" ]; then
+        reenable_all_networks
+    fi
+    wait "$link_cli_pid"
 }
 
 # Long-lived: blocks on /dev/kmsg for the kernel's own suspend-exit record and
@@ -361,8 +410,9 @@ resume_watch_loop() {
     if ! command -v ip >/dev/null 2>&1 ||
        ! command -v wpa_cli >/dev/null 2>&1 ||
        ! command -v udhcpc >/dev/null 2>&1 ||
+       ! command -v flock >/dev/null 2>&1 ||
        [ ! -r /dev/kmsg ]; then
-        echo "wifi-dhcpv4: resume-watch: missing ip, wpa_cli, udhcpc, or /dev/kmsg; not watching"
+        echo "wifi-dhcpv4: resume-watch: missing ip, wpa_cli, udhcpc, flock, or /dev/kmsg; not watching"
         return 0
     fi
 
@@ -384,6 +434,14 @@ resume_watch_loop() {
 case "${1:-}" in
     --boot-worker) run_worker; exit 0 ;;
     --resume-watch) resume_watch_loop; exit 0 ;;
+    --link-watch) link_watch_loop; exit 0 ;;
+    "$IFACE")
+        # wpa_cli invokes the action with interface and event arguments.
+        # Disconnects are deliberately passive, including the UI's Disconnect.
+        [ "${2:-}" != CONNECTED ] || connection_event
+        exit 0
+        ;;
+    *) [ "$#" -eq 0 ] || exit 0 ;;
 esac
 
 # The watcher must exist even when booting with Wi-Fi off: enabling the radio
@@ -402,6 +460,12 @@ old_resume_pid="$(cat "$RESUME_PIDFILE" 2>/dev/null || true)"
 if ! worker_running "$old_resume_pid" --resume-watch; then
     "$0" --resume-watch &
     echo "$!" > "$RESUME_PIDFILE" 2>/dev/null || true
+fi
+
+old_link_pid="$(cat "$LINK_PIDFILE" 2>/dev/null || true)"
+if ! worker_running "$old_link_pid" --link-watch; then
+    "$0" --link-watch &
+    echo "$!" > "$LINK_PIDFILE" 2>/dev/null || true
 fi
 
 exit 0

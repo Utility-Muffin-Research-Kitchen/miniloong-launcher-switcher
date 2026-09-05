@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -15,6 +16,7 @@ DEFINITIONS, STARTUP = HOOK.split("# Separate invocations", 1)
 SESSION = (ROOT / "device/umrk-leaf-session").read_text()
 MOCKS = r'''
 record() { echo "$*" >> "$TEST_ROOT/events"; }
+flock() { "$TEST_PYTHON" -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'; }
 wpa_cli() { record "wpa_cli $*"; }
 wpa_state() { cat "$TEST_ROOT/state"; }
 wpa_supplicant() {
@@ -68,6 +70,7 @@ class WifiResumeTests(unittest.TestCase):
         self.env = {
             **os.environ,
             "TEST_ROOT": str(self.root),
+            "TEST_PYTHON": sys.executable,
             "TMPDIR": str(self.root),
             "UMRK_INTERNAL_DATA_PATH": str(self.root),
             "UMRK_WIFI_DISABLED_MARKER": str(self.root / "wifi-disabled"),
@@ -89,7 +92,7 @@ class WifiResumeTests(unittest.TestCase):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "cmdline").write_bytes(b"\0".join(a.encode() for a in args) + b"\0")
 
-    def run_shell(self, body, *, startup=False):
+    def run_shell(self, body, *, startup=False, args=()):
         source = DEFINITIONS + MOCKS + body
         if startup:
             source += "\n# Separate invocations" + STARTUP
@@ -98,7 +101,7 @@ class WifiResumeTests(unittest.TestCase):
         script = self.root / "00-wifi-dhcpv4.sh"
         script.write_text(source)
         script.chmod(0o755)
-        result = subprocess.run([str(script)], env=self.env, text=True,
+        result = subprocess.run([str(script), *args], env=self.env, text=True,
                                 capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
@@ -112,8 +115,10 @@ class WifiResumeTests(unittest.TestCase):
         self.run_shell('''
 run_worker() { record boot; }
 resume_watch_loop() { record watcher; }
+link_watch_loop() { record link-watcher; }
 ''', startup=True)
         self.assertIn("watcher", self.events())
+        self.assertIn("link-watcher", self.events())
         self.assertNotIn("boot", self.events())
         self.assertNotIn("dhcp", self.events())
 
@@ -125,8 +130,9 @@ resume_watch_loop() { record watcher; }
         self.run_shell('''
 run_worker() { record boot; }
 resume_watch_loop() { record watcher; }
+link_watch_loop() { record link-watcher; }
 ''', startup=True)
-        self.assertEqual(self.events(), ["watcher"])
+        self.assertCountEqual(self.events(), ["watcher", "link-watcher"])
         self.proc(102, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--resume-watch")
         self.run_shell('''
 worker_running 102 --resume-watch || exit 1
@@ -194,10 +200,47 @@ resume_reconnect
         self.assertIn("start-2", self.events())
         self.assertIn("dhcp", self.events())
 
+    def test_connected_event_enables_failover_and_replaces_existing_lease(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        (self.root / "lease").touch()
+        self.run_shell("", startup=True, args=("wlan0", "CONNECTED"))
+        self.assertIn("wpa_cli -i wlan0 enable_network all", self.events())
+        self.assertIn("wpa_cli -i wlan0 save_config", self.events())
+        self.assertIn("dhcp", self.events())
+
+    def test_disconnected_and_stale_connected_events_do_not_reconnect(self):
+        for event in ("DISCONNECTED", "CONNECTED"):
+            with self.subTest(event=event):
+                self.run_shell("", startup=True, args=("wlan0", event))
+                self.assertEqual(self.events(), [])
+        (self.root / "state").write_text("COMPLETED\n")
+        (self.root / "wifi-disabled").touch()
+        self.run_shell("", startup=True, args=("wlan0", "CONNECTED"))
+        self.assertNotIn("dhcp", self.events())
+        self.assertNotIn("wpa_cli -i wlan0 enable_network all", self.events())
+
+    def test_overlapping_requests_serialize_and_close_the_lock_in_dhcp(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        self.run_shell('''
+udhcpc() {
+    "$TEST_PYTHON" -c 'import os; os.fstat(9)' 2>/dev/null && return 1
+    record dhcp-start
+    /bin/sleep .1
+    record dhcp-end
+    touch "$TEST_ROOT/lease"
+}
+renew_ipv4 connection &
+renew_ipv4 resume &
+wait
+''')
+        self.assertEqual([e for e in self.events() if e.startswith("dhcp-")],
+                         ["dhcp-start", "dhcp-end", "dhcp-start", "dhcp-end"])
+
     def test_session_teardown_stops_only_verified_workers(self):
         self.proc(101, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--boot-worker")
         self.proc(102, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--resume-watch")
         self.proc(103, "sleep", "1000")
+        self.proc(104, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
         stubs = "\n".join(f"{name}() {{ :; }}" for name in (
             "log_msg", "stop_boot_transition", "restore_stock_boot_animation",
             "stop_audio_spk_keeper", "kill_stale_custom_launcher",
@@ -207,14 +250,17 @@ resume_reconnect
             with self.subTest(action=action):
                 (self.root / "umrk-wifi-dhcpv4.pid").write_text("101\n")
                 (self.root / "umrk-wifi-resume-watch.pid").write_text(f"{watcher}\n")
+                (self.root / "umrk-wifi-link-watch.pid").write_text("104\n")
                 (self.root / "events").unlink(missing_ok=True)
                 self.run_shell(stubs + "\n" + session_function("stop_wifi_workers")
                                + "\n" + session_function(action) + f"\n{action}")
                 self.assertIn("kill 101", self.events())
+                self.assertIn("kill 104", self.events())
                 if watcher == 102:
                     self.assertIn("kill 102", self.events())
                 self.assertNotIn("kill 103", self.events())
                 self.assertFalse((self.root / "umrk-wifi-resume-watch.pid").exists())
+                self.assertFalse((self.root / "umrk-wifi-link-watch.pid").exists())
 
 
 if __name__ == "__main__":

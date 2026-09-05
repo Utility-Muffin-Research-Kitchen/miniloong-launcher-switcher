@@ -511,10 +511,11 @@ stop_audio_spk_keeper() {
 }
 
 stop_wifi_workers() {
-    for wifi_worker in boot-worker resume-watch; do
+    for wifi_worker in boot-worker resume-watch link-watch; do
         case "$wifi_worker" in
             boot-worker) wifi_pidfile="$TMPDIR/umrk-wifi-dhcpv4.pid" ;;
             resume-watch) wifi_pidfile="$TMPDIR/umrk-wifi-resume-watch.pid" ;;
+            link-watch) wifi_pidfile="$TMPDIR/umrk-wifi-link-watch.pid" ;;
         esac
         wifi_pid="$(cat "$wifi_pidfile" 2>/dev/null || true)"
         rm -f "$wifi_pidfile" 2>/dev/null || true
