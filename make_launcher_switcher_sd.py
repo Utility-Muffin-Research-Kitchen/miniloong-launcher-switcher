@@ -413,9 +413,12 @@ RELEASE_PLATFORM="$RELEASE_ROOT/platforms/$PLATFORM"
 RELEASE_LAUNCHER="$RELEASE_PLATFORM/launcher"
 RELEASE_APPS="$RELEASE_ROOT/Apps"
 MANAGED_APPS="$RELEASE_ROOT/managed-apps.txt"
+RELEASE_THEMES="$RELEASE_ROOT/Themes"
+BUNDLED_THEMES="$RELEASE_ROOT/bundled-themes.txt"
 ACTIVE_PLATFORM="$SYSTEM_ROOT/platforms/$PLATFORM"
 ACTIVE_LAUNCHER="$ACTIVE_PLATFORM/launcher"
 APPS_ROOT="$SDCARD_PATH/Apps"
+THEMES_ROOT="$SDCARD_PATH/Themes"
 USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SDCARD_PATH/.userdata/shared}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
@@ -664,6 +667,25 @@ UMRK_MOUNT_STUBS_EOF
     chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" 2>/dev/null || true
 }
 
+promote_bundled_themes() {
+    [ -f "$BUNDLED_THEMES" ] || return 0
+    mkdir -p "$THEMES_ROOT" || fail "failed to create themes root: $THEMES_ROOT"
+
+    # Themes/ is a public folder users add their own to, so only the folders this
+    # release actually ships are touched. Each named one IS release-managed and is
+    # replaced wholesale, the same as any other payload: a theme the launcher needs
+    # to render correctly must not drift behind the binaries that read it.
+    while IFS= read -r theme || [ -n "$theme" ]; do
+        case "$theme" in
+            ''|\\#*) continue ;;
+            *\\\\*|/*|*/*|.|..|.*) fail "unsafe bundled theme name: $theme" ;;
+        esac
+        [ -d "$RELEASE_THEMES/$theme" ] || fail "missing bundled theme payload: $theme"
+        replace_dir "$RELEASE_THEMES/$theme" "$THEMES_ROOT/$theme"
+        log_msg "promoted bundled theme: $theme"
+    done < "$BUNDLED_THEMES"
+}
+
 promote_managed_apps() {
     [ -f "$MANAGED_APPS" ] || return 0
     mkdir -p "$APPS_ROOT" || fail "failed to create apps root: $APPS_ROOT"
@@ -779,6 +801,8 @@ sync_leaf_assets
 log_msg "promoting managed apps"
 promote_managed_apps
 create_public_dirs
+log_msg "promoting bundled themes"
+promote_bundled_themes
 
 write_release_json
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
