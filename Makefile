@@ -14,6 +14,7 @@ BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
         runtime-env-fixtures release-version-test mount-stub-test wifi-resume-test \
+        bundled-themes-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
         adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs \
@@ -34,6 +35,7 @@ help:
 	@echo "  make release-version-test              validate release id/version separation"
 	@echo "  make mount-stub-test                    validate immutable rootfs mount stubs"
 	@echo "  make wifi-resume-test                   validate Wi-Fi recovery and worker cleanup"
+	@echo "  make bundled-themes-test                validate shipped themes reach the card"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
 
@@ -46,6 +48,9 @@ release-version-test:
 wifi-resume-test:
 	@sh -n device/mlp1/platform.d/00-wifi-dhcpv4.sh device/umrk-leaf-session
 	@python3 tests/test_wifi_resume.py
+
+bundled-themes-test:
+	@python3 tests/test_bundled_themes.py
 
 mount-stub-test:
 	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
