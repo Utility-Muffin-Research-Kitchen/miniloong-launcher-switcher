@@ -58,6 +58,33 @@ class BundledThemeWiringTests(unittest.TestCase):
         )
 
 
+class StaleStageTests(unittest.TestCase):
+    """replace_dir stages at "<dst>.tmp.$$", which for a theme is inside the
+    user's own Themes/ folder. The launcher's scanner skips only dot-names and
+    accepts anything with a readable theme.json, so an interrupted install would
+    leave a duplicate in the theme picker."""
+
+    def test_stale_stage_is_swept_before_promotion(self):
+        self.assertIn('rm -rf "$THEMES_ROOT"/*.tmp.*', SCRIPT)
+
+    def test_sweep_runs_before_any_theme_is_promoted(self):
+        self.assertLess(
+            SCRIPT.index('rm -rf "$THEMES_ROOT"/*.tmp.*'),
+            SCRIPT.rindex("promote_bundled_themes"),
+        )
+
+    def test_sweep_cannot_reach_a_real_theme(self):
+        """The glob must not match a theme folder a user actually named."""
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            for name in ("Sample", "My.Theme", "Sample.tmp.4242", "tmp.1"):
+                (root / name).mkdir()
+            subprocess.run(["sh", "-c", f'rm -rf "{root}"/*.tmp.* 2>/dev/null || true'],
+                           check=True)
+            left = sorted(p.name for p in root.iterdir())
+            self.assertEqual(["My.Theme", "Sample", "tmp.1"], left)
+
+
 class BundledThemePromotionTests(unittest.TestCase):
     """Runs the generated shell for real against a throwaway card."""
 

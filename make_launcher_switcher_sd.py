@@ -762,6 +762,12 @@ for _d in "$USERDATA_PATH" "$INTERNAL_DATA"; do
 done
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
+# replace_dir stages at "<dst>.tmp.$$", and for a theme that lands inside the
+# user's own Themes/ folder. An install interrupted between the two renames
+# would leave it there, and the launcher's scanner skips only dot-names and
+# needs nothing but a readable theme.json -- which a full copy has -- so the
+# stale stage would show up in the theme picker as a duplicate.
+rm -rf "$THEMES_ROOT"/*.tmp.* 2>/dev/null || true
 
 remount_root_rw || fail "rootfs remount rw failed"
 validate_release
