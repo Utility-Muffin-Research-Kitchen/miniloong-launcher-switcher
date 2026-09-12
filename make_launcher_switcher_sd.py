@@ -419,6 +419,10 @@ ACTIVE_PLATFORM="$SYSTEM_ROOT/platforms/$PLATFORM"
 ACTIVE_LAUNCHER="$ACTIVE_PLATFORM/launcher"
 APPS_ROOT="$SDCARD_PATH/Apps"
 THEMES_ROOT="$SDCARD_PATH/Themes"
+# Theme replacements stage here, not inside Themes/. Themes/ holds user-owned
+# folders and no naming pattern in it is reserved, so anything the installer
+# leaves there -- or sweeps from there -- is guessing at ownership.
+THEME_STAGE_ROOT="$SYSTEM_ROOT/theme-stage"
 USERDATA_PATH="${USERDATA_PATH:-$SDCARD_PATH/.userdata/$PLATFORM}"
 SHARED_USERDATA_PATH="${SHARED_USERDATA_PATH:-$SDCARD_PATH/.userdata/shared}"
 LOGS_PATH="${LOGS_PATH:-$USERDATA_PATH/logs}"
@@ -681,9 +685,20 @@ promote_bundled_themes() {
             *\\\\*|/*|*/*|.|..|.*) fail "unsafe bundled theme name: $theme" ;;
         esac
         [ -d "$RELEASE_THEMES/$theme" ] || fail "missing bundled theme payload: $theme"
-        replace_dir "$RELEASE_THEMES/$theme" "$THEMES_ROOT/$theme"
+        # replace_dir would stage at "$THEMES_ROOT/$theme.tmp.$$", a sibling of
+        # the user's own folders. Stage on installer-owned ground instead: the
+        # release tree and Themes/ are both on the card, so each move is a
+        # rename, and nothing the installer creates is ever a sibling of user
+        # content.
+        stage="$THEME_STAGE_ROOT/$theme"
+        rm -rf "$stage" 2>/dev/null || true
+        mkdir -p "$THEME_STAGE_ROOT" || fail "failed to create theme stage: $THEME_STAGE_ROOT"
+        mv "$RELEASE_THEMES/$theme" "$stage" || fail "failed to stage theme: $theme"
+        rm -rf "$THEMES_ROOT/$theme" || fail "failed to replace theme: $theme"
+        mv "$stage" "$THEMES_ROOT/$theme" || fail "failed to promote theme: $theme"
         log_msg "promoted bundled theme: $theme"
     done < "$BUNDLED_THEMES"
+    rm -rf "$THEME_STAGE_ROOT" 2>/dev/null || true
 }
 
 promote_managed_apps() {
@@ -762,12 +777,9 @@ for _d in "$USERDATA_PATH" "$INTERNAL_DATA"; do
 done
 rm -f "$MARKER" 2>/dev/null || true
 rm -rf "$ACTIVE_LAUNCHER".tmp.* "$ACTIVE_PLATFORM"/*.tmp.* 2>/dev/null || true
-# replace_dir stages at "<dst>.tmp.$$", and for a theme that lands inside the
-# user's own Themes/ folder. An install interrupted between the two renames
-# would leave it there, and the launcher's scanner skips only dot-names and
-# needs nothing but a readable theme.json -- which a full copy has -- so the
-# stale stage would show up in the theme picker as a duplicate.
-rm -rf "$THEMES_ROOT"/*.tmp.* 2>/dev/null || true
+# A theme stage left by an interrupted install. It lives under .system, so
+# removing the whole directory cannot reach anything a user owns.
+rm -rf "$THEME_STAGE_ROOT" 2>/dev/null || true
 
 remount_root_rw || fail "rootfs remount rw failed"
 validate_release

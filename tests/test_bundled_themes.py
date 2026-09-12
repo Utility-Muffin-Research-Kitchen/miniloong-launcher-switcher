@@ -8,6 +8,7 @@ proven end to end rather than assumed from the payload's existence.
 """
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -38,10 +39,14 @@ HARNESS = "\n".join([
     "set -u",
     'fail() { echo "FAIL: $1" >&2; exit 3; }',
     'log_msg() { echo "$1"; }',
-    extract_function("replace_dir"),
     extract_function("promote_bundled_themes"),
     "promote_bundled_themes",
 ])
+
+# The one line of the install sequence that clears a stage left by an
+# interrupted run, taken from the generated script rather than retyped.
+SWEEP = next((l for l in SCRIPT.splitlines()
+              if l.startswith('rm -rf "$THEME_STAGE_ROOT"') and "||" in l), None)
 
 
 class BundledThemeWiringTests(unittest.TestCase):
@@ -59,30 +64,44 @@ class BundledThemeWiringTests(unittest.TestCase):
 
 
 class StaleStageTests(unittest.TestCase):
-    """replace_dir stages at "<dst>.tmp.$$", which for a theme is inside the
-    user's own Themes/ folder. The launcher's scanner skips only dot-names and
-    accepts anything with a readable theme.json, so an interrupted install would
-    leave a duplicate in the theme picker."""
+    """Themes/ holds user-owned folders and reserves no naming pattern, so the
+    installer must never leave anything there for a later run to guess about,
+    and must never sweep it by shape. It stages on its own ground instead."""
 
-    def test_stale_stage_is_swept_before_promotion(self):
-        self.assertIn('rm -rf "$THEMES_ROOT"/*.tmp.*', SCRIPT)
+    def test_nothing_is_swept_out_of_the_themes_root(self):
+        for line in SCRIPT.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("rm -rf") and "$THEMES_ROOT" in stripped:
+                self.assertIn(
+                    '"$THEMES_ROOT/$theme"', stripped,
+                    f"only an explicitly named theme may be removed: {stripped}")
 
-    def test_sweep_runs_before_any_theme_is_promoted(self):
-        self.assertLess(
-            SCRIPT.index('rm -rf "$THEMES_ROOT"/*.tmp.*'),
-            SCRIPT.rindex("promote_bundled_themes"),
-        )
+    def test_the_stage_lives_outside_the_themes_root(self):
+        self.assertIn('THEME_STAGE_ROOT="$SYSTEM_ROOT/theme-stage"', SCRIPT)
 
-    def test_sweep_cannot_reach_a_real_theme(self):
-        """The glob must not match a theme folder a user actually named."""
+    def test_an_interrupted_stage_is_cleared_and_themes_untouched(self):
+        self.assertIsNotNone(SWEEP, "no stage cleanup in the generated installer")
+        """A real leftover stage, cleared without reaching user content."""
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
-            for name in ("Sample", "My.Theme", "Sample.tmp.4242", "tmp.1"):
-                (root / name).mkdir()
-            subprocess.run(["sh", "-c", f'rm -rf "{root}"/*.tmp.* 2>/dev/null || true'],
-                           check=True)
-            left = sorted(p.name for p in root.iterdir())
-            self.assertEqual(["My.Theme", "Sample", "tmp.1"], left)
+            stage, themes = root / "system" / "theme-stage", root / "Themes"
+            (stage / "Sample").mkdir(parents=True)
+            (stage / "Sample" / "theme.json").write_text("interrupted")
+            for name in ("My.tmp.Theme", "Holiday.tmp.2026", "Sample"):
+                (themes / name).mkdir(parents=True)
+                (themes / name / "theme.json").write_text("{}")
+                (themes / name / "custom-art.png").write_bytes(b"user fixture")
+
+            subprocess.run(["sh", "-c", SWEEP], check=True,
+                           env={**os.environ, "THEME_STAGE_ROOT": str(stage),
+                                "THEMES_ROOT": str(themes)})
+
+            self.assertFalse(stage.exists(), "the owned stage must be removed")
+            self.assertEqual(["Holiday.tmp.2026", "My.tmp.Theme", "Sample"],
+                             sorted(p.name for p in themes.iterdir()))
+            for name in ("My.tmp.Theme", "Holiday.tmp.2026"):
+                self.assertEqual(b"user fixture",
+                                 (themes / name / "custom-art.png").read_bytes())
 
 
 class BundledThemePromotionTests(unittest.TestCase):
@@ -96,6 +115,7 @@ class BundledThemePromotionTests(unittest.TestCase):
                 "RELEASE_THEMES": str(release / "Themes"),
                 "BUNDLED_THEMES": str(release / "bundled-themes.txt"),
                 "THEMES_ROOT": str(card / "Themes"),
+                "THEME_STAGE_ROOT": str(card / "system" / "theme-stage"),
             },
             capture_output=True,
             text=True,
@@ -112,9 +132,13 @@ class BundledThemePromotionTests(unittest.TestCase):
         stale.mkdir(parents=True)
         (stale / "theme.json").write_text("from-an-older-release")
         (stale / "dropped.png").write_text("no longer part of the theme")
-        mine = card / "Themes" / "MyTheme"
-        mine.mkdir(parents=True)
-        (mine / "theme.json").write_text("the user's own work")
+        # Names chosen to include the shapes an ownership-guessing sweep would
+        # have destroyed: ".tmp." is not reserved, and a user may well use it.
+        for name in ("MyTheme", "My.tmp.Theme", "Holiday.tmp.2026"):
+            mine = card / "Themes" / name
+            mine.mkdir(parents=True)
+            (mine / "theme.json").write_text("the user's own work")
+            (mine / "custom-art.png").write_bytes(b"user fixture")
         return release, card
 
     def test_shipped_theme_replaces_its_own_folder_and_nothing_else(self):
@@ -128,8 +152,14 @@ class BundledThemePromotionTests(unittest.TestCase):
                              (sample / "theme.json").read_text())
             self.assertFalse((sample / "dropped.png").exists(),
                              "a file dropped from the theme must not survive")
-            self.assertEqual("the user's own work",
-                             (card / "Themes" / "MyTheme" / "theme.json").read_text())
+            for name in ("MyTheme", "My.tmp.Theme", "Holiday.tmp.2026"):
+                self.assertEqual("the user's own work",
+                                 (card / "Themes" / name / "theme.json").read_text(),
+                                 f"{name} must survive promotion")
+                self.assertEqual(b"user fixture",
+                                 (card / "Themes" / name / "custom-art.png").read_bytes())
+            self.assertFalse((card / "system" / "theme-stage").exists(),
+                             "the stage must not be left behind")
 
     def test_missing_manifest_is_not_an_error(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -139,6 +169,9 @@ class BundledThemePromotionTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual("from-an-older-release",
                              (card / "Themes" / "Sample" / "theme.json").read_text())
+            for name in ("My.tmp.Theme", "Holiday.tmp.2026"):
+                self.assertTrue((card / "Themes" / name).is_dir(),
+                                f"{name} must survive a release with no manifest")
 
     def test_unsafe_names_abort_the_install(self):
         for name in ("../escape", "/abs", "nested/theme", ".hidden", ".."):
