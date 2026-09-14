@@ -180,6 +180,21 @@ class SessionLogRotationTest(unittest.TestCase):
         self.assertPrevious("y" * 200)
         self.assertLess(self.log.stat().st_size, 200)
 
+    def test_fallback_that_opens_but_rejects_writes_uses_dev_null(self):
+        self.log.mkdir()  # Unusable card log, including when running as root.
+        self.fallback.mkdir(parents=True)
+        fallback_log = self.fallback / "umrk-leaf-session.log"
+        fallback_log.write_text("previous log\n")
+        # A zero-byte append succeeds under this limit, but a real write fails.
+        # Ignore SIGXFSZ so the shell observes the write error, like ENOSPC.
+        result = self.run_shell(
+            'trap "" XFSZ\nulimit -f 0\nensure_usable_log\n'
+            'printf "%s|%s" "$LOG" "$UMRK_LAUNCHER_LOG"\n'
+            'printf "daemon started\\n" >>"$LOG"\n', self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "/dev/null|/dev/null")
+        self.assertEqual(fallback_log.read_text(), "previous log\n")
+
 
 if __name__ == "__main__":
     unittest.main()

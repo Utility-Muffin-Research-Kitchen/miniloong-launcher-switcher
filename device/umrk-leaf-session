@@ -82,7 +82,7 @@ ensure_writable_log() {
     if [ "$size" -gt "$FALLBACK_LOG_MAX_BYTES" ]; then
         mv -f "$fallback" "$fallback.1" 2>/dev/null || true
     fi
-    ( : >>"$fallback" ) 2>/dev/null || return 1
+    ( printf '\n' >>"$fallback" ) 2>/dev/null || return 1
     old_log="$LOG"
     LOG="$fallback"
     export UMRK_LAUNCHER_LOG="$LOG"
