@@ -21,6 +21,9 @@ STORAGE_BACKUP=/loong/loong_storage.stock.umrk
 HOOK=/etc/init.d/S50leaf
 SESSION=/usr/bin/umrk-leaf-session
 MOUNT_STUBS=/usr/bin/umrk-mount-stubs
+STORAGE_REPAIR=/usr/bin/umrk-storage-repair
+STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
+STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
 
 log_msg() {
     log_dir="${LOG%/*}"
@@ -84,6 +87,18 @@ fi
 rm -f "$HOOK" "$SESSION" 2>/dev/null || true
 log_msg "removed init hook/session"
 echo "removed init hook/session"
+
+# Uninstalling ends SD repair protection deliberately: pending requests and
+# holds go, repair logs stay on internal storage. A card held after a failed
+# repair is left exactly as mounted now; nothing here remounts it writable.
+if [ -x "$STORAGE_REPAIR" ]; then
+    "$STORAGE_REPAIR" uninstall-cleanup >>"$LOG" 2>&1 ||
+        log_msg "storage repair cleanup reported failure"
+fi
+rm -f "$STORAGE_REPAIR" "$STORAGE_HOLD_RULE" 2>/dev/null || true
+rm -rf "$STORAGE_RECOVERY_ASSETS" 2>/dev/null || true
+log_msg "removed SD repair runner, mount hold rule and recovery screens"
+echo "removed SD repair runner and mount hold rule"
 
 if [ "$stub_unlock_status" -eq 0 ]; then
     rm -f "$MOUNT_STUBS" 2>/dev/null || true

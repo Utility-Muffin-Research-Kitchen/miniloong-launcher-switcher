@@ -33,6 +33,14 @@ BOOT_STAMP="/loong/textures/.umrk-boot-installed"
 BOOT_MODE="/loong/textures/.umrk-boot-mode"
 BOOT_STOCK_DIR="/loong/textures/boot.stock"
 BOOT_STOCK_CFG="/loong/textures/boot.cfg.stock.umrk"
+# SD repair and recovery live on internal storage and the rootfs so they work
+# whatever state the cards are in.
+STORAGE_REPAIR="${UMRK_STORAGE_REPAIR:-/usr/bin/umrk-storage-repair}"
+STORAGE_RECOVERY_ASSETS="${UMRK_STORAGE_RECOVERY_ASSETS:-/usr/share/umrk/storage-recovery}"
+FALLBACK_LOG_DIR="${UMRK_FALLBACK_LOG_DIR:-/userdata/umrk/logs}"
+FALLBACK_LOG_MAX_BYTES=2097152
+STORAGE_DISPLAY_PID="$TMPDIR/umrk-storage-display.pid"
+STORAGE_NOTICE_SECONDS="${UMRK_STORAGE_NOTICE_SECONDS:-900}"
 
 [ -f /etc/profile ] && . /etc/profile
 
@@ -46,6 +54,100 @@ log_msg() {
 
 now_seconds() {
     date '+%s' 2>/dev/null || echo 0
+}
+
+# When the card holding the session log is read-only, keep supervisor messages
+# and later daemon generations on internal storage. A daemon already running
+# keeps its old descriptor; that output is not recovered.
+ensure_writable_log() {
+    log_dir="${LOG%/*}"
+    [ "$log_dir" != "$LOG" ] && mkdir -p "$log_dir" 2>/dev/null
+    # Probe in a subshell: ":" is a special built-in, and BusyBox ash exits the
+    # whole shell when a redirection on one fails, as it does on a read-only card.
+    if ( : >>"$LOG" ) 2>/dev/null; then
+        return 0
+    fi
+    fallback="$FALLBACK_LOG_DIR/umrk-leaf-session.log"
+    [ "$LOG" = "$fallback" ] && return 1
+    mkdir -p "$FALLBACK_LOG_DIR" 2>/dev/null || return 1
+    size=0
+    [ -f "$fallback" ] && size="$(wc -c <"$fallback" | tr -d ' ')"
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    if [ "$size" -gt "$FALLBACK_LOG_MAX_BYTES" ]; then
+        mv -f "$fallback" "$fallback.1" 2>/dev/null || true
+    fi
+    ( : >>"$fallback" ) 2>/dev/null || return 1
+    old_log="$LOG"
+    LOG="$fallback"
+    export UMRK_LAUNCHER_LOG="$LOG"
+    log_msg "session log $old_log is not writable; logging to $LOG"
+}
+
+rootfs_env() {
+    env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C "$@"
+}
+
+show_storage_display() {
+    screen="$1"
+    [ -x /loong/loong_transition ] || return 0
+    [ -f "$STORAGE_RECOVERY_ASSETS/$screen/0/0.png" ] || return 0
+    stop_storage_display
+    param="{\"dir\":\"$STORAGE_RECOVERY_ASSETS/$screen\",\"bg\":0,\"seques\":[{\"num\":1,\"interval\":1000,\"wait\":0,\"repeat\":-1}]}"
+    (
+        cd /loong 2>/dev/null || exit 127
+        export LD_LIBRARY_PATH=./
+        export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/run}"
+        export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+        exec ./loong_transition "$param"
+    ) >/dev/null 2>&1 &
+    echo "$!" >"$STORAGE_DISPLAY_PID" 2>/dev/null || true
+}
+
+stop_storage_display() {
+    pid="$(cat "$STORAGE_DISPLAY_PID" 2>/dev/null || true)"
+    rm -f "$STORAGE_DISPLAY_PID" 2>/dev/null || true
+    case "$pid" in *[!0-9]*|'') return 0 ;; esac
+    [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = loong_transition ] || return 0
+    kill "$pid" 2>/dev/null || true
+}
+
+# A pending repair runs here, before any card content is read or executed.
+run_storage_repair_boot() {
+    [ "$PLATFORM" = "mlp1" ] || return 0
+    [ -x "$STORAGE_REPAIR" ] || return 0
+    mkdir -p "$FALLBACK_LOG_DIR" 2>/dev/null || true
+    boot_log="$FALLBACK_LOG_DIR/umrk-storage-repair-boot.log"
+    if rootfs_env "$STORAGE_REPAIR" pending 2>/dev/null; then
+        show_storage_display checking
+        rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1 || true
+        stop_storage_display
+    else
+        # Keeps cards held after a failed repair read-only for this boot.
+        rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1 || true
+    fi
+}
+
+# Leaf cannot start and a card is held after a failed repair. Never hand the
+# boot to a stock path that ignores the hold: say what happened, keep ADB for
+# the internal logs, and power off after a bounded wait.
+storage_recovery_notice() {
+    [ "$PLATFORM" = "mlp1" ] || return 1
+    [ -x "$STORAGE_REPAIR" ] || return 1
+    rootfs_env "$STORAGE_REPAIR" has-failed-hold 2>/dev/null || return 1
+    log_msg "$1 while an SD card is held after a failed repair; showing recovery notice"
+    show_storage_display failed
+    if adb_is_pinned; then
+        start_usb_adb || true
+    fi
+    waited=0
+    while [ "$waited" -lt "$STORAGE_NOTICE_SECONDS" ]; do
+        sleep 5
+        waited=$((waited + 5))
+    done
+    log_msg "recovery notice timed out; powering off"
+    sync
+    poweroff 2>/dev/null || busybox poweroff 2>/dev/null || true
+    while true; do sleep 3600; done
 }
 
 mountpoint_is_mounted() {
@@ -301,8 +403,13 @@ restore_sd_noexec() {
 remount_secondary_sd_exec() {
     [ "$PLATFORM" = "mlp1" ] || return 0
     mountpoint_is_mounted "$SECONDARY_SD_MOUNT" || return 0
-    log_msg "best-effort remounting $SECONDARY_SD_MOUNT exec"
-    mount -o remount,rw,exec,nosuid,nodev "$SECONDARY_SD_MOUNT" 2>>"$LOG" ||
+    # A card the kernel flipped read-only, or one kept read-only after a failed
+    # repair, must stay read-only.
+    access=rw
+    secondary_opts="$(awk -v mountpoint="$SECONDARY_SD_MOUNT" '$2 == mountpoint { print $4; exit }' /proc/mounts 2>/dev/null)"
+    option_list_has "$secondary_opts" ro && access=ro
+    log_msg "best-effort remounting $SECONDARY_SD_MOUNT exec ($access)"
+    mount -o "remount,$access,exec,nosuid,nodev" "$SECONDARY_SD_MOUNT" 2>>"$LOG" ||
         log_msg "best-effort exec remount failed for $SECONDARY_SD_MOUNT"
 }
 
@@ -1008,12 +1115,15 @@ ensure_panel_first_weston() {
 }
 
 leaf_start() {
+    run_storage_repair_boot
     load_env_file
     refresh_paths
     recover_launcher_sd_mount
+    ensure_writable_log
 
     if [ ! -e "$MARKER" ]; then
         log_msg "marker absent"
+        storage_recovery_notice "Leaf marker absent" && return 0
         pass_to_stock "Leaf marker absent"
         return 0
     fi
@@ -1045,6 +1155,7 @@ leaf_start() {
     fi
 
     if ! remount_sd_mode exec || ! sd_is_exec; then
+        storage_recovery_notice "SD exec remount failed" && return 0
         disable_marker "SD exec remount failure"
         pass_to_stock "SD exec remount failed"
         return 0
@@ -1052,6 +1163,7 @@ leaf_start() {
     remount_secondary_sd_exec
 
     if ! preflight_jawaka_bundle; then
+        storage_recovery_notice "Jawaka bundle preflight failed" && return 0
         pass_to_stock "Jawaka bundle preflight failed"
         return 0
     fi
@@ -1077,6 +1189,7 @@ leaf_start() {
             pass_to_stock "crash-loop guard disabled Leaf marker"
             return 0
         fi
+        ensure_writable_log
 
         log_msg "starting Leaf launcher: $BUNDLE_BIN"
         "$BUNDLE_BIN" >>"$LOG" 2>&1
