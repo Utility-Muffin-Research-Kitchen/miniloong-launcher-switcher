@@ -13,6 +13,7 @@ fd, and deleting the file by hand was the fix. Rotation must therefore:
 
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -21,6 +22,24 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSION = ROOT / "device/umrk-leaf-session"
+
+
+def posix_shell() -> list[str]:
+    """The device runs this script as sh, which is bash 5 in POSIX mode: a
+    failed redirection on a special built-in exits the whole shell there. macOS
+    /bin/sh (bash 3.2) does not, so prefer a modern bash in --posix mode when
+    one is installed and fall back to sh otherwise."""
+    for candidate in ("/opt/homebrew/bin/bash", "/usr/local/bin/bash", shutil.which("bash")):
+        if not candidate or not os.access(candidate, os.X_OK):
+            continue
+        probe = subprocess.run([candidate, "-c", 'echo "${BASH_VERSINFO[0]}"'],
+                               capture_output=True, text=True)
+        if probe.stdout.strip().isdigit() and int(probe.stdout.strip()) >= 4:
+            return [candidate, "--posix", "-c"]
+    return ["sh", "-c"]
+
+
+SHELL = posix_shell()
 
 
 def session_functions() -> str:
@@ -42,7 +61,7 @@ fi
 class SessionLogRotationTest(unittest.TestCase):
     def run_shell(self, body: str, env: dict) -> subprocess.CompletedProcess:
         script = session_functions() + "\n" + body
-        return subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True)
+        return subprocess.run([*SHELL, script], env=env, capture_output=True, text=True)
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -62,14 +81,22 @@ class SessionLogRotationTest(unittest.TestCase):
         })
 
     def tearDown(self):
-        self.logs.chmod(stat.S_IRWXU)
+        for directory in (self.logs, self.root / "locked"):
+            if directory.exists():
+                directory.chmod(stat.S_IRWXU)
         self.tmp.cleanup()
+
+    def assertPrevious(self, expected: str) -> None:
+        # The health check appends one real byte (a newline) before rotating:
+        # that is how an EIO log is told apart from a healthy one.
+        self.assertEqual(self.log.with_suffix(".log.1").read_text().rstrip("\n"),
+                         expected.rstrip("\n"))
 
     def test_healthy_log_rotates_to_exactly_one_previous(self):
         self.log.write_text("previous session\n")
         result = self.run_shell(ROTATE_BLOCK, self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.log.with_suffix(".log.1").read_text(), "previous session\n")
+        self.assertPrevious("previous session\n")
         self.assertTrue(self.log.exists())
         self.assertIn("rotated: new session", self.log.read_text())
 
@@ -78,7 +105,7 @@ class SessionLogRotationTest(unittest.TestCase):
         self.run_shell(ROTATE_BLOCK, self.env)
         self.log.write_text("second\n")
         self.run_shell(ROTATE_BLOCK, self.env)
-        self.assertEqual(self.log.with_suffix(".log.1").read_text(), "second\n")
+        self.assertPrevious("second\n")
         self.assertNotIn("first", self.log.read_text())
 
     def test_oversized_log_rotates_and_boot_continues(self):
@@ -86,7 +113,7 @@ class SessionLogRotationTest(unittest.TestCase):
         env = dict(self.env, LOG_MAX_BYTES="64")
         result = self.run_shell(ROTATE_BLOCK, env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.log.with_suffix(".log.1").read_text(), "x" * 200)
+        self.assertPrevious("x" * 200)
         self.assertLess(self.log.stat().st_size, 200)
 
     @unittest.skipIf(os.geteuid() == 0, "root ignores file permissions")
@@ -107,17 +134,41 @@ class SessionLogRotationTest(unittest.TestCase):
     @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
     def test_unwritable_log_directory_falls_back_and_boots(self):
         self.logs.chmod(stat.S_IRUSR | stat.S_IXUSR)
-        body = "ensure_writable_log\n" + ROTATE_BLOCK
+        body = ROTATE_BLOCK + 'ensure_usable_log\necho "LOG=$LOG"\n'
         result = self.run_shell(body, self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         fallback_log = self.fallback / "umrk-leaf-session.log"
-        # The fallback message lands in the previous log, because the boot
-        # rotation then moves it aside; the fresh log carries the rotation note.
-        self.assertIn(
-            "is not writable; logging to",
-            self.fallback.joinpath("umrk-leaf-session.log.1").read_text(),
-        )
-        self.assertIn("rotated: new session", fallback_log.read_text())
+        self.assertIn(f"LOG={fallback_log}", result.stdout)
+        # Rotation ran against the card first and could not write there; the
+        # fallback then carries the decision.
+        self.assertIn("is not writable; logging to", fallback_log.read_text())
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_rotation_on_a_read_only_directory_does_not_exit_the_supervisor(self):
+        """sh is bash in POSIX mode on the device: a failed redirection on the
+        ':' special built-in exits the whole shell, not just the command."""
+        self.logs.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        result = self.run_shell('rotate_session_log "read-only card"\necho alive\n', self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("alive", result.stdout)
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_no_writable_log_anywhere_boots_on_dev_null(self):
+        self.logs.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        locked = self.root / "locked"
+        locked.mkdir()
+        locked.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        env = dict(self.env, FALLBACK_LOG_DIR=str(locked / "logs"))
+        body = (ROTATE_BLOCK + 'ensure_usable_log\necho "LOG=$LOG"\n'
+                # A later generation must leave /dev/null alone.
+                'session_log_is_healthy || echo unhealthy\n'
+                'rotate_session_log "generation"\nensure_usable_log\necho "again LOG=$LOG"\n')
+        result = self.run_shell(body, env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LOG=/dev/null", result.stdout)
+        self.assertIn("again LOG=/dev/null", result.stdout)
+        self.assertNotIn("unhealthy", result.stdout)
+        self.assertTrue(Path("/dev/null").exists())
 
     def test_generation_start_rotation_uses_healthy_check(self):
         """The per-generation call in the launcher loop must rotate an
@@ -126,7 +177,7 @@ class SessionLogRotationTest(unittest.TestCase):
         body = 'session_log_is_healthy || rotate_session_log "log unreadable, unwritable, or oversized at generation start"'
         result = self.run_shell(body, dict(self.env, LOG_MAX_BYTES="64"))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.log.with_suffix(".log.1").read_text(), "y" * 200)
+        self.assertPrevious("y" * 200)
         self.assertLess(self.log.stat().st_size, 200)
 
 
