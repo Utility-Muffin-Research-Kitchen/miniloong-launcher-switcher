@@ -39,6 +39,10 @@ STORAGE_REPAIR="${UMRK_STORAGE_REPAIR:-/usr/bin/umrk-storage-repair}"
 STORAGE_RECOVERY_ASSETS="${UMRK_STORAGE_RECOVERY_ASSETS:-/usr/share/umrk/storage-recovery}"
 FALLBACK_LOG_DIR="${UMRK_FALLBACK_LOG_DIR:-/userdata/umrk/logs}"
 FALLBACK_LOG_MAX_BYTES=2097152
+# A session log is a per-session artifact that every child of the launcher
+# inherits, so it is capped well below the FAT32 per-file ceiling and rotated
+# every boot. UMRK_LOG_MAX_BYTES tunes the cap (bytes).
+LOG_MAX_BYTES="${UMRK_LOG_MAX_BYTES:-8388608}"
 STORAGE_DISPLAY_PID="$TMPDIR/umrk-storage-display.pid"
 STORAGE_NOTICE_SECONDS="${UMRK_STORAGE_NOTICE_SECONDS:-900}"
 
@@ -64,7 +68,9 @@ ensure_writable_log() {
     [ "$log_dir" != "$LOG" ] && mkdir -p "$log_dir" 2>/dev/null
     # Probe in a subshell: ":" is a special built-in, and BusyBox ash exits the
     # whole shell when a redirection on one fails, as it does on a read-only card.
-    if ( : >>"$LOG" ) 2>/dev/null; then
+    # A real byte, because opening for append succeeds on a file whose writes
+    # fail with EIO.
+    if ( printf '\n' >>"$LOG" ) 2>/dev/null; then
         return 0
     fi
     fallback="$FALLBACK_LOG_DIR/umrk-leaf-session.log"
@@ -76,11 +82,57 @@ ensure_writable_log() {
     if [ "$size" -gt "$FALLBACK_LOG_MAX_BYTES" ]; then
         mv -f "$fallback" "$fallback.1" 2>/dev/null || true
     fi
-    ( : >>"$fallback" ) 2>/dev/null || return 1
+    ( printf '\n' >>"$fallback" ) 2>/dev/null || return 1
     old_log="$LOG"
     LOG="$fallback"
     export UMRK_LAUNCHER_LOG="$LOG"
     log_msg "session log $old_log is not writable; logging to $LOG"
+}
+
+# Healthy means the session log can take what the launcher and its children
+# will send it: readable, appendable, and well under the FAT32 per-file ceiling.
+# An unreadable or unwritable log is exactly the condition a reporter had to fix
+# by hand (deleting umrk-leaf-session.log brought ports back on Leaf 0.11).
+session_log_is_healthy() {
+    [ "$LOG" = /dev/null ] && return 0
+    [ -e "$LOG" ] || return 0
+    [ -f "$LOG" ] || return 1
+    # The last byte, not the first: reaching it walks the whole FAT cluster
+    # chain, which is where a damaged log fails.
+    tail -c 1 "$LOG" >/dev/null 2>&1 || return 1
+    # A real byte, not a zero-length append: that succeeds without touching the
+    # device and would not detect EIO.
+    ( printf '\n' >>"$LOG" ) 2>/dev/null || return 1
+    size="$(wc -c <"$LOG" 2>/dev/null | tr -d ' ')"
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    [ "$size" -lt "$LOG_MAX_BYTES" ]
+}
+
+# Keep exactly one previous log as .1: it is what a bug reporter needs, and
+# nothing else is kept. A log that cannot even be renamed is removed -- losing
+# a broken log is strictly better than a device that cannot launch games.
+rotate_session_log() {
+    reason="$1"
+    [ "$LOG" = /dev/null ] && return 0
+    if [ -e "$LOG" ]; then
+        mv -f "$LOG" "$LOG.1" 2>/dev/null || rm -f "$LOG" 2>/dev/null || true
+    fi
+    # Subshell: ":" is a special built-in, and sh here is bash in POSIX mode,
+    # which exits the whole supervisor when a redirection on one fails -- as it
+    # does on a read-only card.
+    ( : >"$LOG" ) 2>/dev/null || true
+    log_msg "session log rotated: $reason"
+}
+
+# The launcher and every child inherit $LOG, so it must take a byte before it
+# is handed down. Card first, then the internal fallback; when neither will
+# hold a log, boot on without one rather than propagate a broken descriptor.
+ensure_usable_log() {
+    ensure_writable_log && return 0
+    echo "umrk-leaf-session: no writable session log ($LOG); logging to /dev/null" \
+        >/dev/console 2>/dev/null || true
+    LOG=/dev/null
+    export UMRK_LAUNCHER_LOG="$LOG"
 }
 
 rootfs_env() {
@@ -1119,7 +1171,18 @@ leaf_start() {
     load_env_file
     refresh_paths
     recover_launcher_sd_mount
-    ensure_writable_log
+    # Rotate every boot regardless of health: carrying a session log across
+    # boots is what let it grow in the first place, and the .1 copy is what a
+    # bug report needs. An unhealthy log rotates the same way; if it cannot
+    # even be renamed it is dropped. Rotation runs on the card path before the
+    # read-only fallback, so a broken log on a writable card is healed in place
+    # instead of pushing logging onto internal storage.
+    if session_log_is_healthy; then
+        rotate_session_log "new session"
+    else
+        rotate_session_log "previous log unreadable, unwritable, or oversized"
+    fi
+    ensure_usable_log
 
     if [ ! -e "$MARKER" ]; then
         log_msg "marker absent"
@@ -1189,7 +1252,14 @@ leaf_start() {
             pass_to_stock "crash-loop guard disabled Leaf marker"
             return 0
         fi
-        ensure_writable_log
+        # A daemon generation that starts against a log which went bad or
+        # oversized mid-session must not hand the broken fd down again. The
+        # boot rotation above already ran; this catches drift while the device
+        # stays up for days.
+        if ! session_log_is_healthy; then
+            rotate_session_log "log unreadable, unwritable, or oversized at generation start"
+        fi
+        ensure_usable_log
 
         log_msg "starting Leaf launcher: $BUNDLE_BIN"
         "$BUNDLE_BIN" >>"$LOG" 2>&1
