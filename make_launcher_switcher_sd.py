@@ -36,6 +36,7 @@ PROMOTED_PLATFORM_DIRS = (
     "platform.d",
     "autoconfig",
     "boot-animation",
+    "storage-recovery",
     "emulators",
     "runtime",
     "shaders",
@@ -57,6 +58,8 @@ HOOK_PATH = ROOT_DIR / "device" / "S50leaf"
 SESSION_PATH = ROOT_DIR / "device" / "umrk-leaf-session"
 UNINSTALLER_PATH = ROOT_DIR / "device" / "umrk-launcher-switcher-uninstall.sh"
 MOUNT_STUBS_PATH = ROOT_DIR / "device" / "umrk-mount-stubs"
+STORAGE_REPAIR_PATH = ROOT_DIR / "device" / "umrk-storage-repair"
+STORAGE_HOLD_RULE_PATH = ROOT_DIR / "device" / "95-umrk-storage-hold.rules"
 
 MASK64 = (1 << 64) - 1
 
@@ -193,6 +196,8 @@ def build_installer_script(require_adb_pinned: bool = True) -> str:
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
     mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
+    storage_repair = read_required(STORAGE_REPAIR_PATH).rstrip()
+    storage_hold_rule = read_required(STORAGE_HOLD_RULE_PATH).rstrip()
     adb_preflight = (
         "assert_adb_pinned"
         if require_adb_pinned
@@ -221,6 +226,11 @@ UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
 MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
+STORAGE_REPAIR=/usr/bin/umrk-storage-repair
+STORAGE_REPAIR_TMP=/tmp/umrk-storage-repair.$$
+STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
+STORAGE_HOLD_RULE_TMP=/tmp/95-umrk-storage-hold.rules.$$
+STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
 
 log_msg() {
     mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
@@ -328,12 +338,31 @@ cat > "$MOUNT_STUBS_TMP" <<'UMRK_MOUNT_STUBS_EOF'
 __MOUNT_STUBS__
 UMRK_MOUNT_STUBS_EOF
 
-chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" || fail "failed to chmod install files"
+cat > "$STORAGE_REPAIR_TMP" <<'UMRK_STORAGE_REPAIR_EOF'
+__STORAGE_REPAIR__
+UMRK_STORAGE_REPAIR_EOF
+
+cat > "$STORAGE_HOLD_RULE_TMP" <<'UMRK_STORAGE_HOLD_RULE_EOF'
+__STORAGE_HOLD_RULE__
+UMRK_STORAGE_HOLD_RULE_EOF
+
+chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" || fail "failed to chmod install files"
 mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
 mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
 mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
 mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
-chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" 2>/dev/null || true
+mv "$STORAGE_REPAIR_TMP" "$STORAGE_REPAIR" || fail "failed to install SD repair runner"
+mkdir -p "${STORAGE_HOLD_RULE%/*}" && mv "$STORAGE_HOLD_RULE_TMP" "$STORAGE_HOLD_RULE" ||
+    fail "failed to install SD repair mount hold rule"
+chmod 644 "$STORAGE_HOLD_RULE" 2>/dev/null || true
+if [ -d "$PLATFORM_ROOT/storage-recovery" ]; then
+    rm -rf "$STORAGE_RECOVERY_ASSETS.new" 2>/dev/null || true
+    mkdir -p "${STORAGE_RECOVERY_ASSETS%/*}" &&
+        cp -r "$PLATFORM_ROOT/storage-recovery" "$STORAGE_RECOVERY_ASSETS.new" &&
+        rm -rf "$STORAGE_RECOVERY_ASSETS" && mv "$STORAGE_RECOVERY_ASSETS.new" "$STORAGE_RECOVERY_ASSETS" ||
+        log_msg "SD repair screens not installed; repair runs without them"
+fi
+chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" 2>/dev/null || true
 "$MOUNT_STUBS" lock || fail "failed to protect rootfs mount stubs"
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 sync
@@ -349,6 +378,8 @@ echo "installed launcher switcher init hook"
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
         .replace("__MOUNT_STUBS__", mount_stubs)
+        .replace("__STORAGE_REPAIR__", storage_repair)
+        .replace("__STORAGE_HOLD_RULE__", storage_hold_rule)
     )
 
 
@@ -383,6 +414,8 @@ def build_managed_installer_script(
     session = read_required(SESSION_PATH).rstrip()
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
     mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
+    storage_repair = read_required(STORAGE_REPAIR_PATH).rstrip()
+    storage_hold_rule = read_required(STORAGE_HOLD_RULE_PATH).rstrip()
     template = """#!/bin/sh
 set -u
 
@@ -443,6 +476,11 @@ UNINSTALL=/usr/bin/umrk-launcher-switcher-uninstall.sh
 UNINSTALL_TMP=/tmp/umrk-launcher-switcher-uninstall.$$
 MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
+STORAGE_REPAIR=/usr/bin/umrk-storage-repair
+STORAGE_REPAIR_TMP=/tmp/umrk-storage-repair.$$
+STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
+STORAGE_HOLD_RULE_TMP=/tmp/95-umrk-storage-hold.rules.$$
+STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
 
 log_msg() {
     mkdir -p "$LOGS_PATH" "$INTERNAL_DATA" 2>/dev/null || true
@@ -663,12 +701,39 @@ UMRK_LAUNCHER_UNINSTALL_EOF
 __MOUNT_STUBS__
 UMRK_MOUNT_STUBS_EOF
 
-    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" || fail "failed to chmod install files"
+    cat > "$STORAGE_REPAIR_TMP" <<'UMRK_STORAGE_REPAIR_EOF'
+__STORAGE_REPAIR__
+UMRK_STORAGE_REPAIR_EOF
+
+    cat > "$STORAGE_HOLD_RULE_TMP" <<'UMRK_STORAGE_HOLD_RULE_EOF'
+__STORAGE_HOLD_RULE__
+UMRK_STORAGE_HOLD_RULE_EOF
+
+    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" || fail "failed to chmod install files"
     mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
     mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
     mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
     mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
-    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" 2>/dev/null || true
+    mv "$STORAGE_REPAIR_TMP" "$STORAGE_REPAIR" || fail "failed to install SD repair runner"
+    mkdir -p "${STORAGE_HOLD_RULE%/*}" && mv "$STORAGE_HOLD_RULE_TMP" "$STORAGE_HOLD_RULE" ||
+        fail "failed to install SD repair mount hold rule"
+    chmod 644 "$STORAGE_HOLD_RULE" 2>/dev/null || true
+    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" 2>/dev/null || true
+}
+
+# The repair screens are shown before any card content is readable, so they
+# live on the rootfs. Called after the platform payload has been promoted.
+install_storage_recovery_assets() {
+    [ -d "$ACTIVE_PLATFORM/storage-recovery" ] || return 0
+    rm -rf "$STORAGE_RECOVERY_ASSETS.new" 2>/dev/null || true
+    if mkdir -p "${STORAGE_RECOVERY_ASSETS%/*}" &&
+        cp -r "$ACTIVE_PLATFORM/storage-recovery" "$STORAGE_RECOVERY_ASSETS.new" &&
+        rm -rf "$STORAGE_RECOVERY_ASSETS" &&
+        mv "$STORAGE_RECOVERY_ASSETS.new" "$STORAGE_RECOVERY_ASSETS"; then
+        log_msg "installed SD repair screens"
+    else
+        log_msg "SD repair screens not installed; repair runs without them"
+    fi
 }
 
 promote_bundled_themes() {
@@ -822,6 +887,7 @@ create_public_dirs
 log_msg "promoting bundled themes"
 promote_bundled_themes
 
+install_storage_recovery_assets
 write_release_json
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 touch "$INTERNAL_DATA/release-$RELEASE_ID-installed" 2>/dev/null || true
@@ -844,6 +910,8 @@ echo "managed Leaf install complete"
         .replace("__SESSION__", session)
         .replace("__UNINSTALLER__", uninstaller)
         .replace("__MOUNT_STUBS__", mount_stubs)
+        .replace("__STORAGE_REPAIR__", storage_repair)
+        .replace("__STORAGE_HOLD_RULE__", storage_hold_rule)
     )
 
 

@@ -1,0 +1,11 @@
+# UMRK: keep SD cards held for repair away from stock auto-mounting.
+#
+# Runs after 60-persistent-storage (which imports ID_FS_UUID) and before
+# usbmount.rules, which skips any device whose ID_FS_TYPE is empty. The by-uuid
+# link stays, so the repair runner can still find the card.
+SUBSYSTEM!="block", GOTO="umrk_storage_hold_end"
+ACTION!="add", GOTO="umrk_storage_hold_end"
+KERNEL!="mmcblk[1-9]*", GOTO="umrk_storage_hold_end"
+ENV{ID_FS_UUID}=="", GOTO="umrk_storage_hold_end"
+PROGRAM="/usr/bin/umrk-storage-repair gate-udev $env{ID_FS_UUID}", RESULT=="hold", ENV{UMRK_STORAGE_HOLD}="1", ENV{ID_FS_TYPE}=""
+LABEL="umrk_storage_hold_end"

@@ -13,7 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
-        runtime-env-fixtures release-version-test mount-stub-test wifi-resume-test \
+        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test wifi-resume-test \
         bundled-themes-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
@@ -34,6 +34,7 @@ help:
 	@echo "  make runtime-env-fixtures              validate configured dual-source exports"
 	@echo "  make release-version-test              validate release id/version separation"
 	@echo "  make mount-stub-test                    validate immutable rootfs mount stubs"
+	@echo "  make storage-repair-test                validate SD repair requests, holds and boot runner"
 	@echo "  make wifi-resume-test                   validate Wi-Fi recovery and worker cleanup"
 	@echo "  make bundled-themes-test                validate shipped themes reach the card"
 	@echo ""
@@ -51,6 +52,11 @@ wifi-resume-test:
 
 bundled-themes-test:
 	@python3 tests/test_bundled_themes.py
+
+storage-repair-test:
+	@sh -n device/umrk-storage-repair device/umrk-leaf-session device/umrk-launcher-switcher-uninstall.sh
+	@tools/storage-repair-fixtures.sh
+	@python3 tests/test_session_log_fallback.py
 
 mount-stub-test:
 	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
