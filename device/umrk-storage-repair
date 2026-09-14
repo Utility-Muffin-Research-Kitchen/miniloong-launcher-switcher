@@ -19,7 +19,8 @@
 #   request --uuid U --source S --fs-type vfat --device /dev/X --mode repair|check
 #   boot            run a pending request (from umrk-leaf-session, before Leaf)
 #   pending         exit 0 when a request is waiting
-#   has-failed-hold exit 0 when a card is held after a failed or interrupted repair
+#   has-failed-hold exit 0 when an inserted card is still held after boot, or
+#                   holds exist but internal storage can't be used
 #   gate-udev UUID  print "hold" when that card must not be auto-mounted
 #   status          print state for diagnostics
 #   uninstall-cleanup  remove requests and holds (ends the protection)
@@ -189,6 +190,13 @@ resolve_uuid() {
     fi
     # The by-uuid link is the identity; a device only blkid reports is not one.
     if [ "$matches" -eq 0 ] || [ -z "$found" ]; then
+        echo not-found
+        return 1
+    fi
+    # The link can outlive a card swap until udev catches up, so the device
+    # must report this UUID when probed now. Without blkid nothing can prove it.
+    probed="$(blkid "$found" 2>/dev/null | sed -n 's/.*[[:space:]]UUID="\([^"]*\)".*/\1/p' | head -n 1)"
+    if [ "$probed" != "$uuid" ]; then
         echo not-found
         return 1
     fi
@@ -447,6 +455,7 @@ block_device_exists() {
 
 protect_mount() {
     dev="$1"
+    [ -n "$dev" ] || return 0
     block_device_exists "$dev" || return 0
     if device_mounted "$dev"; then
         for mp in $(device_mount_points "$dev"); do
@@ -750,11 +759,16 @@ case "${1:-}" in
     boot) cmd_boot ;;
     pending) [ -f "$REQUEST" ] ;;
     has-failed-hold)
-        # Only a held card that is actually inserted counts; a removed card
-        # must not stop a normal boot from another card.
+        # Asked after boot, when Leaf could not start. Any hold counts: a
+        # pending one still here means its request could not run. Only a held
+        # card that is actually inserted counts, so a removed card never stops
+        # a normal boot from another card. When internal storage is unusable
+        # the rootfs flag is the only evidence, and it is enough.
+        if [ -e "$HOLD_FLAG" ] && ! internal_storage_ready; then
+            exit 0
+        fi
         for hold in "$HOLDS_DIR"/*; do
             [ -f "$hold" ] || continue
-            [ "$(kv_get "$hold" state)" = pending ] && continue
             uuid_is_valid "${hold##*/}" || continue
             resolve_uuid "${hold##*/}" >/dev/null 2>&1 || continue
             exit 0

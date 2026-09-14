@@ -314,6 +314,20 @@ rm "$root/by-uuid/22A4-0814"
 expect_outcome not-found "missing card"
 expect_no_fsck "missing card"
 
+# The by-uuid link still names mmcblk1, but another card is in the slot now.
+reset_fixture
+export FAKE_BLKID='/dev/mmcblk1: LABEL="SPARE" UUID="5B1E-77C2" TYPE="vfat"\n'
+if request_launcher 2>"$root/err"; then fail "accepted a request for a replaced card"; fi
+grep -q not-found "$root/err" || fail "replaced card reason"
+reset_fixture
+request_launcher >/dev/null
+export FAKE_BLKID='/dev/mmcblk1: LABEL="SPARE" UUID="5B1E-77C2" TYPE="vfat"\n'
+"$RUNNER" boot >/dev/null
+expect_outcome not-found "stale UUID link"
+expect_no_fsck "stale UUID link"
+! grep -q '^mount -t' "$root/events" || fail "stale UUID link: mounted the replacement card"
+grep -qx "state=failed" "$STATE/holds/22A4-0814" || fail "stale UUID link released the hold"
+
 reset_fixture
 request_launcher >/dev/null
 export FAKE_BLKID='/dev/mmcblk1: UUID="22A4-0814" TYPE="vfat"\n/dev/mmcblk3: UUID="22A4-0814" TYPE="vfat"\n'
@@ -390,6 +404,24 @@ reset_fixture
 : >"$UMRK_STORAGE_HOLD_FLAG"
 rm -rf "$STATE"
 [ "$("$RUNNER" gate-udev 04B1-0820)" = hold ] || fail "gate released cards without internal state"
+
+# Startup must present recovery whenever boot repair could not run.
+reset_fixture
+if "$RUNNER" has-failed-hold; then fail "has-failed-hold with no holds"; fi
+request_launcher >/dev/null
+export FAKE_DF_FREE=100
+"$RUNNER" boot >/dev/null
+expect_no_fsck "boot with full internal storage"
+"$RUNNER" has-failed-hold || fail "has-failed-hold ignored a request that could not run"
+unset FAKE_DF_FREE
+"$RUNNER" has-failed-hold || fail "has-failed-hold ignored a pending hold"
+
+reset_fixture
+request_launcher >/dev/null
+awk '$2 != "/userdata"' "$root/mounts" >"$root/mounts.new" && mv "$root/mounts.new" "$root/mounts"
+"$RUNNER" boot >/dev/null
+expect_no_fsck "boot without internal storage"
+"$RUNNER" has-failed-hold || fail "has-failed-hold without internal storage"
 
 reset_fixture
 request_launcher >/dev/null
