@@ -14,7 +14,7 @@ BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
         runtime-env-fixtures release-version-test mount-stub-test storage-repair-test wifi-resume-test \
-        bundled-themes-test \
+        bundled-themes-test boot-animation-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
         adb-enable-marker adb-disable-marker adb-restart-loong adb-tail-logs \
@@ -37,6 +37,7 @@ help:
 	@echo "  make storage-repair-test                validate SD repair requests, holds and boot runner"
 	@echo "  make wifi-resume-test                   validate Wi-Fi recovery and worker cleanup"
 	@echo "  make bundled-themes-test                validate shipped themes reach the card"
+	@echo "  make boot-animation-test                validate uninstall restores the stock boot animation"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
 
@@ -52,6 +53,10 @@ wifi-resume-test:
 
 bundled-themes-test:
 	@python3 tests/test_bundled_themes.py
+
+boot-animation-test:
+	@sh -n device/umrk-launcher-switcher-uninstall.sh device/umrk-leaf-session
+	@python3 tests/test_uninstall_boot_animation.py
 
 storage-repair-test:
 	@sh -n device/umrk-storage-repair device/umrk-leaf-session device/umrk-launcher-switcher-uninstall.sh
