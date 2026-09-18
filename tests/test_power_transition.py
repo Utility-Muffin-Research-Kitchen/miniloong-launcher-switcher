@@ -153,4 +153,46 @@ echo old-shell-returned
         self.assertFalse(crash.exists())
         self.assertNotIn('old-shell-returned', (self.root/'power.log').read_text())
 
+    def test_stop_returns_once_the_process_exits(self):
+        # Fixed sleeps used to spend ~2 s of the power button's 6 s PMIC budget.
+        body = '''
+sleep 30 &
+pid=$!
+start=$(date +%s)
+stop_pid "$pid" 200
+wait "$pid" 2>/dev/null
+echo "elapsed=$(( $(date +%s) - start ))"
+pid_running "$pid" && echo still-running
+'''
+        result = subprocess.run(['sh', '-c', session_functions() + body], env=self.env,
+                                capture_output=True, text=True, timeout=20)
+        self.assertIn('elapsed=0', result.stdout, result.stderr)
+        self.assertNotIn('still-running', result.stdout)
+
+    def test_low_battery_poweroff_is_handed_to_jawakad(self):
+        # Stock loong_power runs system("poweroff"); BusyBox would only signal a
+        # PID 1 that is blocked in rcS. Its PATH must reach jawakad's handoff.
+        ctl = self.root/'launcher/bin/jawaka-platformctl'
+        ctl.parent.mkdir(parents=True)
+        ctl.write_text('#!/bin/sh\nprintf "%s|" "$@" >>"$CTL_LOG"\n')
+        ctl.chmod(0o755)
+        env = dict(self.env, TMPDIR=str(self.root), UMRK_BIN_PATH=str(ctl.parent),
+                   JAWAKA_RUNTIME_DIR='/tmp/jawaka-runtime', CTL_LOG=str(self.root/'ctl.log'))
+        body = '''
+prepare_loong_power_handoff || exit 9
+PATH="$LOONG_POWER_HANDOFF_DIR:$PATH" sh -c poweroff
+PATH="$LOONG_POWER_HANDOFF_DIR:$PATH" sh -c reboot
+'''
+        result = subprocess.run(['sh', '-c', session_functions() + body], env=env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = (self.root/'ctl.log').read_text()
+        for action in ('poweroff', 'reboot'):
+            self.assertIn('--socket|/tmp/jawaka-runtime/jawakad.sock|request|'
+                          '{"type":"platform-action","action":"%s","value":0}|' % action, calls)
+        env['UMRK_BIN_PATH'] = str(self.root/'missing')
+        result = subprocess.run(['sh', '-c', session_functions() + 'prepare_loong_power_handoff'],
+                                env=env, capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+
 if __name__ == '__main__': unittest.main()

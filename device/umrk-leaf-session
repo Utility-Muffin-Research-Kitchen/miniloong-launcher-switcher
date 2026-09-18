@@ -166,15 +166,35 @@ stop_storage_display() {
     stop_transition_pid "$pid"
 }
 
+# A zombie has already closed its files; only a live process can hold a card.
+pid_running() {
+    case "$(sed -n 's/^State:[[:space:]]*\(.\).*/\1/p' "/proc/$1/status" 2>/dev/null)" in
+        ''|Z) return 1 ;;
+    esac
+    return 0
+}
+
+# Poll for exit rather than sleeping a fixed time. Every stop runs inside the
+# power-button shutdown, which must finish before the PMIC's 6 s hold cut.
+# stop_pid PID POLLS: SIGTERM, wait up to POLLS x 50 ms, then SIGKILL.
+stop_pid() {
+    kill "$1" 2>/dev/null || return 0
+    polls=0
+    while pid_running "$1" && [ "$polls" -lt "$2" ]; do
+        sleep .05
+        polls=$((polls + 1))
+    done
+    if pid_running "$1"; then
+        kill -9 "$1" 2>/dev/null || true
+    fi
+    return 0
+}
+
 stop_transition_pid() {
     # Linux comm truncates this 16-character name to loong_transitio. Match the
     # executable instead, and wait for closure before remounting its log card.
     [ "$(readlink "/proc/$1/exe" 2>/dev/null)" = /loong/loong_transition ] || return 0
-    kill "$1" 2>/dev/null || true
-    sleep .2
-    if [ "$(readlink "/proc/$1/exe" 2>/dev/null)" = /loong/loong_transition ]; then
-        kill -9 "$1" 2>/dev/null || true
-    fi
+    stop_pid "$1" 4
     wait "$1" 2>/dev/null || true
 }
 
@@ -633,6 +653,9 @@ start_owned_loong() {
     (
         cd /loong 2>/dev/null || exit 127
         export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
+        if [ "$name" = loong_power ] && prepare_loong_power_handoff; then
+            export PATH="$LOONG_POWER_HANDOFF_DIR:$PATH"
+        fi
         if [ -n "$cfg" ]; then
             "./$name" "$cfg"
         else
@@ -641,6 +664,29 @@ start_owned_loong() {
     ) >>"$LOG" 2>&1 &
     echo "$!" >"$pidfile" 2>/dev/null || true
     return 0
+}
+
+# Stock loong_power's low-battery shutdown runs system("poweroff"). The BusyBox
+# applet only signals PID 1, which stays blocked in rcS while Leaf owns the
+# boot, so the device used to run on until the battery cut power with both
+# cards writable. Resolve its poweroff/reboot to jawakad's power handoff so
+# the normal cleanup and storage barrier run. If jawakad cannot be reached,
+# nothing else happens, as before.
+LOONG_POWER_HANDOFF_DIR="$TMPDIR/umrk-loong-power-bin"
+prepare_loong_power_handoff() {
+    ctl="${UMRK_BIN_PATH:-}/jawaka-platformctl"
+    sock="${JAWAKA_RUNTIME_DIR:-$RUNTIME_DIR}/jawakad.sock"
+    case "$ctl$sock" in *\"*|*\\*|*\$*|*\`*) return 1 ;; esac
+    [ -x "$ctl" ] || return 1
+    rm -rf "$LOONG_POWER_HANDOFF_DIR" && mkdir -p "$LOONG_POWER_HANDOFF_DIR" || return 1
+    cat >"$LOONG_POWER_HANDOFF_DIR/poweroff" <<EOF || return 1
+#!/bin/sh
+action="\${0##*/}"
+echo "loong_power requested \$action; handing it to jawakad"
+exec "$ctl" --socket "$sock" request "{\\"type\\":\\"platform-action\\",\\"action\\":\\"\$action\\",\\"value\\":0}"
+EOF
+    chmod 755 "$LOONG_POWER_HANDOFF_DIR/poweroff" &&
+        ln -sf poweroff "$LOONG_POWER_HANDOFF_DIR/reboot"
 }
 
 stop_owned_process() {
@@ -654,9 +700,7 @@ stop_owned_process() {
     comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
     [ "$comm" = "$name" ] || return 0
     log_msg "stopping leaf-owned $name pid=$pid"
-    kill "$pid" 2>/dev/null || true
-    sleep .3
-    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+    stop_pid "$pid" 6
 }
 
 stop_remaining_processes_by_name() {
@@ -665,7 +709,11 @@ stop_remaining_processes_by_name() {
     [ -n "$pids" ] || return 0
     log_msg "stopping remaining $name pids=$pids"
     kill $pids 2>/dev/null || true
-    sleep .3
+    polls=0
+    while [ "$polls" -lt 6 ] && pidof "$name" >/dev/null 2>&1; do
+        sleep .05
+        polls=$((polls + 1))
+    done
     pids="$(pidof "$name" 2>/dev/null || true)"
     [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
 }
@@ -684,9 +732,7 @@ stop_audio_spk_keeper() {
     case "$pid" in *[!0-9]*|'') return 0 ;; esac
     [ -d "/proc/$pid" ] || return 0
     log_msg "stopping audio speaker keeper pid=$pid"
-    kill "$pid" 2>/dev/null || true
-    sleep .2
-    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+    stop_pid "$pid" 4
 }
 
 stop_wifi_workers() {
@@ -704,9 +750,7 @@ stop_wifi_workers() {
             *"/00-wifi-dhcpv4.sh
 --$wifi_worker")
                 log_msg "stopping Wi-Fi $wifi_worker pid=$wifi_pid"
-                kill "$wifi_pid" 2>/dev/null || true
-                sleep .2
-                [ -d "/proc/$wifi_pid" ] && kill -9 "$wifi_pid" 2>/dev/null || true
+                stop_pid "$wifi_pid" 4
                 ;;
         esac
     done
