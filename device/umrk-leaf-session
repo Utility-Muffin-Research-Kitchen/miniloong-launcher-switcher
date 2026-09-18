@@ -653,13 +653,15 @@ start_owned_loong() {
     (
         cd /loong 2>/dev/null || exit 127
         export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
-        if [ "$name" = loong_power ] && prepare_loong_power_handoff; then
-            export PATH="$LOONG_POWER_HANDOFF_DIR:$PATH"
+        if [ "$name" = loong_power ] && [ -n "${UMRK_LOONG_POWER_HANDOFF_DIR:-}" ]; then
+            export PATH="$UMRK_LOONG_POWER_HANDOFF_DIR:$PATH"
         fi
+        # exec keeps the pidfile on the daemon itself, so shutdown can stop it
+        # by PID instead of falling back to a slower name search.
         if [ -n "$cfg" ]; then
-            "./$name" "$cfg"
+            exec "./$name" "$cfg"
         else
-            "./$name"
+            exec "./$name"
         fi
     ) >>"$LOG" 2>&1 &
     echo "$!" >"$pidfile" 2>/dev/null || true
@@ -671,7 +673,8 @@ start_owned_loong() {
 # boot, so the device used to run on until the battery cut power with both
 # cards writable. Resolve its poweroff/reboot to jawakad's power handoff so
 # the normal cleanup and storage barrier run. If jawakad cannot be reached,
-# nothing else happens, as before.
+# nothing else happens, as before. Jawaka restarts loong_power after a power
+# setting changes; it reads UMRK_LOONG_POWER_HANDOFF_DIR to keep this PATH.
 LOONG_POWER_HANDOFF_DIR="$TMPDIR/umrk-loong-power-bin"
 prepare_loong_power_handoff() {
     ctl="${UMRK_BIN_PATH:-}/jawaka-platformctl"
@@ -1170,18 +1173,25 @@ restore_stock_rumble() {
 # Recording conversion is intentionally detached from jawakad. Wait for the
 # existing Leaf helper to finish; killing an arbitrary process with an SD fd
 # would destroy work owned by apps we do not supervise.
+recording_converters_running() {
+    for candidate in $(pgrep -f leaf-record-convert.sh 2>/dev/null); do
+        if tr '\0' '\n' <"/proc/$candidate/cmdline" 2>/dev/null |
+            grep -q '/.system/leaf/platforms/mlp1/bin/leaf-record-convert.sh$'; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Show the notice only when there is something to wait for; starting and
+# killing the animation otherwise costs ~0.5 s of the power-button budget.
 wait_recording_converters() {
-    while true; do
-        converters=""
-        for candidate in $(pgrep -f leaf-record-convert.sh 2>/dev/null); do
-            if tr '\0' '\n' <"/proc/$candidate/cmdline" 2>/dev/null |
-                grep -q '/.system/leaf/platforms/mlp1/bin/leaf-record-convert.sh$'; then
-                converters="$converters $candidate"
-            fi
-        done
-        [ -n "$converters" ] || return 0
+    recording_converters_running || return 0
+    show_storage_display power
+    while recording_converters_running; do
         sleep 1
     done
+    stop_storage_display
 }
 
 # This is terminal for the session, including on failure. Keep the request
@@ -1207,9 +1217,7 @@ finish_power_transition() {
     exec </dev/null >>"$LOG" 2>&1
     unset LD_LIBRARY_PATH LD_PRELOAD
     export PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/
-    show_storage_display power
     wait_recording_converters
-    stop_storage_display
     # Installing an update can unlink this running script. Even a read-only
     # descriptor to an unlinked inode blocks ext4's read-only remount. Exec the
     # installed supervisor to close that descriptor before the final barrier.
@@ -1358,6 +1366,11 @@ leaf_start() {
 
     export_leaf_env
     start_pulseaudio_if_needed
+    if prepare_loong_power_handoff; then
+        export UMRK_LOONG_POWER_HANDOFF_DIR="$LOONG_POWER_HANDOFF_DIR"
+    else
+        log_msg "loong_power low-battery handoff unavailable"
+    fi
     start_owned_loong loong_power /oem/loong/record/config/loong_power.cfg "$OWNED_POWER_PID"
     log_msg "skipping loong_light; Jawaka owns LED ring in Leaf mode"
     run_platform_hooks
