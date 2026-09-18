@@ -138,8 +138,14 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn('/run/umrk-recovery-power-transition', MODULE.recovery_command("reboot"))
         for command in (MODULE.install_command("reboot"), MODULE.recovery_command("reboot")):
             self.assertIn('exec env -i', command)
-            self.assertIn('while true; do sleep 5; done', command)
             self.assertNotIn('reboot -f', command)
+            self.assertNotIn('/dev/console', command)
+            # The stock OTA runner reaps the command once its pipe closes, and
+            # loong_service keeps /oem writable until the stock stack stops.
+            self.assertIn("3>&1 </dev/null >>/run/umrk-power-transition.log", command)
+            self.assertLess(command.index('killall -9 $stock'), command.index('power-transition reboot'))
+            self.assertIn('loong_service', command)
+            self.assertRegex(command, r'while true; do /\S+power-transition reboot; sleep 5; done')
 
     def test_uninstaller_unlocks_before_removing_helper(self):
         script = MODULE.read_required(MODULE.UNINSTALLER_PATH)

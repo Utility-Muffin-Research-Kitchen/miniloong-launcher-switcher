@@ -45,10 +45,27 @@ PROMOTED_PLATFORM_DIRS = (
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
+# Stock loong_daemon runs otaCommand behind a pipe and, once that pipe closes,
+# kills what the command left running and returns to the stock UI. Keep the
+# pipe open on fd 3 until the kernel power call. Stock services also keep
+# internal files open for writing (loong_service holds /oem/loong/loong.db), so
+# stop the stock stack first, as its own S50loong halt does, and only then run
+# the storage barrier. A failed barrier never falls back to a forced reboot; it
+# retries, and a user can still power off after the flush it already completed.
+COMPLETION_STOCK_STACK = (
+    "loong_pangu loong_service loong_storage loong_input loong_light "
+    "loong_power loong_daemon"
+)
 COMPLETION_REBOOT = (
     "cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C "
-    "/bin/sh -c '/usr/bin/umrk-power-transition reboot; "
-    "while true; do sleep 5; done' </dev/null >/dev/console 2>&1"
+    "/bin/sh -c '"
+    f"stock=\"{COMPLETION_STOCK_STACK}\"; "
+    "killall $stock 2>/dev/null; n=0; "
+    "while [ $n -lt 40 ] && pidof $stock >/dev/null; do sleep .05; n=$((n+1)); done; "
+    "killall -9 $stock 2>/dev/null; n=0; "
+    "while [ $n -lt 40 ] && pidof $stock >/dev/null; do sleep .05; n=$((n+1)); done; "
+    "while true; do /usr/bin/umrk-power-transition reboot; sleep 5; done"
+    "' 3>&1 </dev/null >>/run/umrk-power-transition.log 2>&1"
 )
 
 ROOT_DIR = Path(__file__).resolve().parent
