@@ -1,0 +1,60 @@
+#!/bin/sh
+# Rootfs-only final power barrier. The caller has stopped Leaf and its workers,
+# closed card descriptors and changed cwd to /. Never fall back to an unchecked
+# reboot: PID 1 is blocked in rcS while the Leaf session owns startup.
+set -u
+case "${1:-}" in reboot|poweroff) action="$1" ;; *) exit 2 ;; esac
+cd / || exit 1
+MOUNTINFO="${UMRK_POWER_MOUNTINFO:-/proc/self/mountinfo}"
+LOCK="${UMRK_USBMOUNT_LOCK:-/var/run/usbmount/.mount}"
+
+fail() { echo "umrk-power-transition: $*" >&2; exit 1; }
+# major 0 is a kernel/virtual filesystem. Persistent MLP1 filesystems are
+# block-backed (including eMMC, both SD slots and any mounted loop devices).
+# Include mount and superblock access separately: a read-only bind is not a
+# read-only filesystem. Refuse escaped paths instead of splitting them wrongly.
+mounts() {
+    awk '$3 !~ /^0:/ {
+        for (i = 7; i <= NF; i++) if ($i == "-") {
+            print $1, $3, $5, $6, $(i + 3); break
+        }
+    }' "$MOUNTINFO"
+}
+writable() {
+    mounts | awk '$4 ~ /(^|,)rw(,|$)/ || $5 ~ /(^|,)rw(,|$)/ { print $3 }'
+}
+
+verify_closed() {
+    after="$(mounts)" || fail "cannot read final mount table"
+    [ -n "$after" ] || fail "final mount table is empty"
+    [ "$(printf '%s\n' "$after" | awk '{print $1, $2, $3}')" = \
+      "$(printf '%s\n' "$before" | awk '{print $1, $2, $3}')" ] ||
+        fail "mount identity changed during shutdown"
+    [ -z "$(printf '%s\n' "$after" | awk '$4 ~ /(^|,)rw(,|$)/ || $5 ~ /(^|,)rw(,|$)/ { print $3 }')" ] ||
+        fail "a persistent mount or superblock is still writable"
+}
+
+mkdir -p "${LOCK%/*}" || fail "cannot prepare mount lock"
+lockfile-create --retry 20 "$LOCK" || fail "mount lock is busy"
+trap 'lockfile-remove "$LOCK"' EXIT
+trap 'exit 1' HUP INT TERM
+[ -r "$MOUNTINFO" ] || fail "mount table unavailable"
+before="$(mounts)" || fail "cannot read mount table"
+[ -n "$before" ] || fail "no persistent mounts found"
+case "$before" in *'\'*) fail "unsupported escaped mount path" ;; esac
+# All sync calls are synchronous; a slow card is never a reason to cut power.
+for point in $(writable); do
+    sync -f "$point" || fail "flush failed: $point"
+done
+# Descending mount IDs visit later mounts/binds before their parents. Root is
+# normally the first mount and therefore comes last.
+for point in $(mounts | sort -rn | awk '{print $3}'); do
+    mount -o remount,ro "$point" || fail "read-only remount failed: $point"
+done
+verify_closed
+sync || fail "final flush failed"
+verify_closed
+echo "umrk-power-transition: filesystems closed; $action"
+# BusyBox -f invokes the kernel directly. Only reachable after the barrier.
+busybox "$action" -f
+fail "kernel power command returned"

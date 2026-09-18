@@ -22,6 +22,7 @@ HOOK=/etc/init.d/S50leaf
 SESSION=/usr/bin/umrk-leaf-session
 MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 STORAGE_REPAIR=/usr/bin/umrk-storage-repair
+POWER_TRANSITION=/usr/bin/umrk-power-transition
 STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
 STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
 BOOT_DIR=/loong/textures/boot
@@ -186,7 +187,7 @@ if [ -x "$STORAGE_REPAIR" ]; then
     "$STORAGE_REPAIR" uninstall-cleanup >>"$LOG" 2>&1 ||
         log_msg "storage repair cleanup reported failure"
 fi
-rm -f "$STORAGE_REPAIR" "$STORAGE_HOLD_RULE" 2>/dev/null || true
+rm -f "$STORAGE_REPAIR" "$STORAGE_HOLD_RULE" "$POWER_TRANSITION" 2>/dev/null || true
 rm -rf "$STORAGE_RECOVERY_ASSETS" 2>/dev/null || true
 log_msg "removed SD repair runner, mount hold rule and recovery screens"
 echo "removed SD repair runner and mount hold rule"

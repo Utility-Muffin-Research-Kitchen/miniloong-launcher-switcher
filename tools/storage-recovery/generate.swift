@@ -15,10 +15,16 @@ struct Screen {
 let screens = [
     Screen(dir: "device/mlp1/storage-recovery/checking/0",
            title: "Checking your SD card",
-           body: "Keep your device connected to power.\nThis can take a few minutes."),
+           body: "Your device is checking the card before saving is enabled.\nThis can take a few minutes."),
     Screen(dir: "device/mlp1/storage-recovery/failed/0",
-           title: "Your SD card couldn't be repaired.",
-           body: "Turn off your device and check the card on a computer."),
+           title: "Your SD card is still protected",
+           body: "Turn off your device and repair the card on a computer.\nSafely eject it, then insert it and turn your device on."),
+    Screen(dir: "device/mlp1/storage-recovery/power/0",
+           title: "Finishing up",
+           body: "Your device is finishing saving before it restarts or turns off."),
+    Screen(dir: "device/mlp1/storage-recovery/power-failed/0",
+           title: "Shutdown paused",
+           body: "Your device couldn't finish saving safely.\nKeep your device on to protect your files."),
 ]
 
 func render(_ screen: Screen) throws {
