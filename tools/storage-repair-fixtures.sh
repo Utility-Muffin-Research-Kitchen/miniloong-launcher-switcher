@@ -56,6 +56,7 @@ case "$1" in
         [ -n "${FAKE_REPAIR_OUTPUT:-}" ] && printf '%b' "$FAKE_REPAIR_OUTPUT"
         exit "${FAKE_REPAIR_RC:-0}" ;;
     -n)
+        [ "${2:-}" != -v ] || exit "${FAKE_PRECHECK_RC:-1}"
         [ -n "${FAKE_VERIFY_OUTPUT:-}" ] && printf '%b' "$FAKE_VERIFY_OUTPUT"
         exit "${FAKE_VERIFY_RC:-0}" ;;
 esac
@@ -68,13 +69,19 @@ cat >"$fake_bin/timeout" <<'SH'
 shift 3
 case "$*" in
     *" -a "*) [ "${FAKE_TIMEOUT_REPAIR:-0}" = 1 ] && { "$@" >/dev/null 2>&1; exit 124; } ;;
-    *" -n "*) [ "${FAKE_TIMEOUT_VERIFY:-0}" = 1 ] && exit 124 ;;
+    *" -n "*) [ "${FAKE_TIMEOUT_VERIFY:-0}" = 1 ] && { "$@" >/dev/null 2>&1; exit 124; } ;;
 esac
 exec "$@"
 SH
 
 cat >"$fake_bin/sync" <<'SH'
 #!/bin/sh
+case "${1:-}" in
+    */results/*.summary.tmp.*)
+        [ -f "$UMRK_USBMOUNT_LOCK.lock" ] || exit 1
+        [ "${FAKE_RESULT_SYNC_FAIL:-0}" != 1 ] || exit 1 ;;
+    */request.tmp.*) [ "${FAKE_REQUEST_SYNC_FAIL:-0}" != 1 ] || exit 1 ;;
+esac
 if [ "$#" -eq 0 ]; then
     echo "sync" >>"$FAKE_EVENTS"
     [ "${FAKE_SYNC_FAIL:-0}" = 1 ] && exit 1
@@ -107,7 +114,13 @@ echo "/dev/mmcblk0p12 4900000 900000 ${FAKE_DF_FREE:-3800000} 19% /userdata"
 SH
 cat >"$fake_bin/pidof" <<'SH'
 #!/bin/sh
-[ "${FAKE_FSCK_ALIVE:-0}" = 1 ] && { echo 4242; exit 0; }
+[ "${FAKE_FSCK_ALIVE:-0}" = 1 ] && {
+    if [ "${FAKE_TIMEOUT_REPAIR:-0}" = 1 ]; then
+        grep -q '^fsck -a' "$FAKE_EVENTS" || exit 1
+    else
+        grep -q '^fsck -n' "$FAKE_EVENTS" || exit 1
+    fi
+} && { echo 4242; exit 0; }
 exit 1
 SH
 chmod 755 "$fake_bin"/*
@@ -135,6 +148,7 @@ MOUNTS
 
     export PATH="$fake_bin:$PATH"
     export UMRK_STORAGE_REPAIR_DIR="$root/state"
+    export UMRK_STORAGE_CHECKED_DIR="$root/run/checked"
     export UMRK_STORAGE_INTERNAL_MOUNT=/userdata
     export UMRK_STORAGE_HOLD_FLAG="$root/etc/umrk-storage-hold-active"
     export UMRK_FSCK_FAT="$fake_bin/fsck.fat"
@@ -148,7 +162,7 @@ MOUNTS
     export FAKE_MOUNTS="$root/mounts" FAKE_EVENTS="$root/events"
     unset FAKE_MOUNT_FAIL FAKE_UMOUNT_BUSY FAKE_REPAIR_RC FAKE_VERIFY_RC FAKE_REPAIR_OUTPUT \
         FAKE_VERIFY_OUTPUT FAKE_TIMEOUT_REPAIR FAKE_TIMEOUT_VERIFY FAKE_SYNC_FAIL FAKE_LOCK_FAIL \
-        FAKE_BLKID FAKE_DF_FREE FAKE_FSCK_ALIVE 2>/dev/null || true
+        FAKE_BLKID FAKE_DF_FREE FAKE_FSCK_ALIVE FAKE_RESULT_SYNC_FAIL FAKE_REQUEST_SYNC_FAIL FAKE_PRECHECK_RC 2>/dev/null || true
     export FAKE_BLKID='/dev/mmcblk1: LABEL="MLPPRDLEAF" UUID="22A4-0814" TYPE="vfat"\n/dev/mmcblk3: LABEL="MLPPRDROMS" UUID="04B1-0820" TYPE="vfat"\n'
     STATE="$root/state"
 }
@@ -271,7 +285,7 @@ grep -q "^/dev/mmcblk1 .* vfat ro," "$root/mounts" || fail "failed repair not mo
 [ "$("$RUNNER" gate-udev 22A4-0814)" = hold ] || fail "gate released a failed card"
 rm "$root/by-uuid/22A4-0814"
 if "$RUNNER" has-failed-hold; then fail "has-failed-hold counted a removed card"; fi
-# A later boot with no request does not retry automatically.
+# A daemon/session restart in this boot does not retry automatically.
 : >"$root/events"
 ln -s ../../mmcblk1 "$root/by-uuid/22A4-0814"
 "$RUNNER" boot >/dev/null
@@ -290,7 +304,7 @@ export FAKE_SYNC_FAIL=1
 "$RUNNER" boot >/dev/null
 expect_outcome failed "sync failure"
 grep -q '^fsck -a' "$root/events" || fail "sync case did not repair"
-! grep -q '^fsck -n' "$root/events" || fail "verification ran after failed sync"
+! grep -q '^fsck -n /dev' "$root/events" || fail "verification ran after failed sync"
 
 reset_fixture
 request_launcher >/dev/null
@@ -381,22 +395,24 @@ request_launcher >/dev/null
 sed 's/^attempts=0$/attempts=1/' "$STATE/request" >"$STATE/request.new"
 mv "$STATE/request.new" "$STATE/request"
 "$RUNNER" boot >/dev/null
-expect_outcome interrupted "interrupted attempt"
-expect_no_fsck "interrupted attempt"
-grep -qx "state=failed" "$STATE/holds/22A4-0814" || fail "interrupted attempt lost the hold"
+expect_outcome clean "interrupted attempt checked clean"
+[ "$(summary_value origin)" = automatic-check ] || fail "interrupted repair not checked"
+! grep -q '^fsck -a' "$root/events" || fail "interrupted repair repeated modifications"
+grep -q '^outcome=interrupted$' "$STATE"/results/*.summary || fail "interrupted result lost"
 
 reset_fixture
 request_launcher >/dev/null
 printf 'request_id=$(reboot)\nuuid=22A4-0814\n' >"$STATE/request"
+# A malformed request does not authorize modification; the old hold can be checked.
 "$RUNNER" boot >/dev/null
-expect_no_fsck "malformed request"
+! grep -q '^fsck -a' "$root/events" || fail "malformed request modified card"
 [ -f "$STATE/request.invalid" ] || fail "malformed request not set aside"
 
 reset_fixture
 request_launcher >/dev/null
 export FAKE_LOCK_FAIL=1
-"$RUNNER" boot >/dev/null
-expect_outcome busy "mount lock unavailable"
+if "$RUNNER" boot >/dev/null; then fail "boot accepted missing mount lock"; fi
+[ -f "$STATE/request" ] || fail "lock failure lost request"
 expect_no_fsck "mount lock unavailable"
 
 # ── Holds without internal storage, and uninstall ───────────────────────────
@@ -410,7 +426,7 @@ reset_fixture
 if "$RUNNER" has-failed-hold; then fail "has-failed-hold with no holds"; fi
 request_launcher >/dev/null
 export FAKE_DF_FREE=100
-"$RUNNER" boot >/dev/null
+if "$RUNNER" boot >/dev/null; then fail "boot accepted full internal storage"; fi
 expect_no_fsck "boot with full internal storage"
 "$RUNNER" has-failed-hold || fail "has-failed-hold ignored a request that could not run"
 unset FAKE_DF_FREE
@@ -419,7 +435,7 @@ unset FAKE_DF_FREE
 reset_fixture
 request_launcher >/dev/null
 awk '$2 != "/userdata"' "$root/mounts" >"$root/mounts.new" && mv "$root/mounts.new" "$root/mounts"
-"$RUNNER" boot >/dev/null
+if "$RUNNER" boot >/dev/null; then fail "boot accepted missing internal storage"; fi
 expect_no_fsck "boot without internal storage"
 "$RUNNER" has-failed-hold || fail "has-failed-hold without internal storage"
 
@@ -428,5 +444,78 @@ request_launcher >/dev/null
 "$RUNNER" uninstall-cleanup >/dev/null
 [ ! -f "$STATE/request" ] && [ ! -d "$STATE/holds" ] || fail "uninstall left holds"
 [ ! -e "$UMRK_STORAGE_HOLD_FLAG" ] || fail "uninstall left the rootfs flag"
+
+# PC repair keeps the UUID. Only the next real boot should release its hold.
+reset_fixture
+request_launcher check >/dev/null
+export FAKE_VERIFY_RC=1
+"$RUNNER" boot >/dev/null
+rm -rf "$UMRK_STORAGE_CHECKED_DIR"
+unset FAKE_VERIFY_RC
+echo 0 >"$root/power/ac/online"
+: >"$root/events"
+"$RUNNER" pending || fail "automatic check not advertised"
+"$RUNNER" boot >/dev/null
+expect_outcome clean "PC repaired same UUID"
+[ "$(summary_value origin)" = automatic-check ] || fail "automatic origin missing"
+[ ! -f "$STATE/holds/22A4-0814" ] || fail "PC repair kept hold"
+grep -q '^fsck -n /dev/mmcblk1' "$root/events" || fail "PC repair wasn't verified"
+! grep -q '^fsck -a' "$root/events" || fail "PC repair ran modifying fsck"
+[ -f "$STATE/last-results/22A4-0814" ] || fail "per-card result absent"
+
+# Battery permits an explicit check but still refuses modifying repair.
+reset_fixture
+echo 0 >"$root/power/ac/online"
+request_launcher check >/dev/null || fail "battery check refused"
+"$RUNNER" boot >/dev/null
+expect_outcome clean "battery check"
+
+# Both held cards get independent results; normal cards get no offline scan.
+reset_fixture
+"$RUNNER" boot >/dev/null
+expect_no_fsck "healthy normal boot"
+mkdir -p "$STATE/holds"
+for card in 22A4-0814 04B1-0820; do
+    printf 'state=failed\nrequest_id=old\n' >"$STATE/holds/$card"
+done
+"$RUNNER" boot >/dev/null
+[ "$(grep -c '^fsck -n' "$root/events")" = 2 ] || fail "dual card check count"
+for card in 22A4-0814 04B1-0820; do
+    [ ! -f "$STATE/holds/$card" ] || fail "dual check kept hold"
+    result=$(cat "$STATE/last-results/$card")
+    grep -qx "uuid=$card" "$STATE/results/$result.summary" || fail "wrong card result"
+done
+
+# A failed result commit restores read-only access and blocks normal startup.
+reset_fixture
+request_launcher check >/dev/null
+export FAKE_RESULT_SYNC_FAIL=1
+if "$RUNNER" boot >/dev/null; then fail "result failure allowed startup"; fi
+[ -f "$STATE/holds/22A4-0814" ] || fail "result failure lost hold"
+! grep -q '^/dev/mmcblk1 .* vfat rw,' "$root/mounts" || fail "result failure left card writable"
+[ ! -f "$UMRK_USBMOUNT_LOCK.lock" ] || fail "result failure leaked lock"
+
+reset_fixture
+mkdir -p "$STATE/holds"
+printf 'state=failed\nrequest_id=older\n' >"$STATE/holds/22A4-0814"
+export FAKE_REQUEST_SYNC_FAIL=1
+if request_launcher check >/dev/null 2>&1; then fail "broken publication accepted"; fi
+grep -qx 'request_id=older' "$STATE/holds/22A4-0814" || fail "publication replaced older hold"
+
+# A checker surviving a read-only timeout must never be mounted underneath.
+reset_fixture
+request_launcher check >/dev/null
+export FAKE_TIMEOUT_VERIFY=1 FAKE_FSCK_ALIVE=1
+"$RUNNER" boot >/dev/null
+expect_outcome timed-out "verification timeout with live checker"
+[ "$(summary_value mount_state)" = unmounted ] || fail "live checker mounted"
+! grep -q '^mount -t' "$root/events" || fail "mounted during verification"
+
+reset_fixture
+request_launcher >/dev/null
+export FAKE_PRECHECK_RC=0
+"$RUNNER" boot >/dev/null
+expect_outcome clean "fresh repair already clean"
+! grep -q '^fsck -a' "$root/events" || fail "already clean card modified"
 
 echo "storage repair fixtures: PASS"

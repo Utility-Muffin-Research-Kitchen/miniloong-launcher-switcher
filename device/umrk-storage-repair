@@ -38,6 +38,10 @@ POWER_SUPPLY_DIR="${UMRK_POWER_SUPPLY_DIR:-/sys/class/power_supply}"
 USBMOUNT_LOCK="${UMRK_USBMOUNT_LOCK:-/var/run/usbmount/.mount}"
 MOUNT_POINTS="${UMRK_STORAGE_MOUNT_POINTS:-/mnt/sdcard /media/sdcard1}"
 REPAIR_DEADLINE_S="${UMRK_STORAGE_REPAIR_DEADLINE_S:-600}"
+CHECK_DEADLINE_S="${UMRK_STORAGE_CHECK_DEADLINE_S:-120}"
+# /run is tmpfs: one automatic check per UUID per kernel boot, not per session.
+CHECKED_DIR="${UMRK_STORAGE_CHECKED_DIR:-/run/umrk-storage-checked}"
+RESULT_ORIGIN=user-request
 KILL_GRACE_S="${UMRK_STORAGE_REPAIR_KILL_GRACE_S:-10}"
 MIN_FREE_KB="${UMRK_STORAGE_MIN_FREE_KB:-16384}"
 LOG_KEEP_BYTES="${UMRK_STORAGE_LOG_KEEP_BYTES:-8388608}"
@@ -253,10 +257,19 @@ new_request_id() {
     stamp="$(date '+%Y%m%d%H%M%S' 2>/dev/null || echo 0)"
     rand="$( { tr -dc 'a-f0-9' </proc/sys/kernel/random/uuid; } 2>/dev/null | cut -c1-8)"
     [ -n "$rand" ] || rand="$$"
-    echo "r$stamp-$rand"
+    candidate="r$stamp-$rand"
+    sequence=0
+    while [ -e "$RESULTS_DIR/$candidate.summary" ] || [ -e "$RESULTS_DIR/$candidate.log" ]; do
+        sequence=$((sequence + 1))
+        candidate="r$stamp-$rand-$sequence"
+    done
+    echo "$candidate"
 }
 
-cmd_request() {
+cmd_request() (
+    lock_acquire || die "busy"
+    trap 'lock_release' EXIT
+    trap 'exit 1' HUP INT TERM
     uuid=""
     source=""
     fs_type=""
@@ -280,7 +293,7 @@ cmd_request() {
     [ -x "$FSCK_FAT" ] || die "tool-missing"
     internal_storage_ready || die "internal-storage-unavailable"
     [ -f "$REQUEST" ] && die "busy"
-    external_power_online || die "power-required"
+    [ "$mode" != repair ] || external_power_online || die "power-required"
 
     resolved="$(resolve_uuid "$uuid")" || die "$resolved"
     [ "${resolved##*/}" = "${device##*/}" ] || die "not-found"
@@ -288,7 +301,10 @@ cmd_request() {
 
     request_id="$(new_request_id)"
     hold_flag_set || die "internal-storage-unavailable"
-    set_hold "$uuid" pending "$request_id" || die "internal-storage-unavailable"
+    # Keep an existing hold intact if publishing the new request fails.
+    if [ ! -f "$HOLDS_DIR/$uuid" ]; then
+        set_hold "$uuid" pending "$request_id" || die "internal-storage-unavailable"
+    fi
     if ! atomic_write "$REQUEST" <<EOF
 request_id=$request_id
 uuid=$uuid
@@ -299,11 +315,11 @@ mode=$mode
 attempts=0
 EOF
     then
-        atomic_remove "$HOLDS_DIR/$uuid"
+        # A failed publication must never release an older protection.
         die "internal-storage-unavailable"
     fi
     echo "$request_id"
-}
+)
 
 # ── Results ───────────────────────────────────────────────────────────────
 
@@ -413,6 +429,7 @@ write_result() {
   "device": "$r_device",
   "fs_type": "$r_fs",
   "mode": "$r_mode",
+  "origin": "$RESULT_ORIGIN",
   "outcome": "$r_outcome",
   "repair_exit_code": ${r_repair_rc:-null},
   "verify_exit_code": ${r_verify_rc:-null},
@@ -428,6 +445,7 @@ uuid=$r_uuid
 device=$r_device
 fs_type=$r_fs
 mode=$r_mode
+origin=$RESULT_ORIGIN
 outcome=$r_outcome
 repair_exit_code=${r_repair_rc:-none}
 verify_exit_code=${r_verify_rc:-none}
@@ -435,6 +453,7 @@ mount_state=$r_mount_state
 changes_complete=$r_changes_complete
 reported_changes=$count
 EOF
+    printf '%s\n' "$id" | atomic_write "$STATE_DIR/last-results/$r_uuid" || return 1
     printf '%s\n' "$id" | atomic_write "$STATE_DIR/last-result"
 }
 
@@ -457,12 +476,16 @@ protect_mount() {
     dev="$1"
     [ -n "$dev" ] || return 0
     block_device_exists "$dev" || return 0
+    # Even a read-only FAT mount must not race a surviving checker.
+    fsck_still_running && return 0
+    case "$(device_fs_type "$dev")" in vfat|msdos) ;; *) return 0 ;; esac
     if device_mounted "$dev"; then
         for mp in $(device_mount_points "$dev"); do
             device_mounted_rw "$dev" || break
             mount -o remount,ro "$mp" 2>/dev/null || true
         done
-        return 0
+        ! device_mounted_rw "$dev"
+        return $?
     fi
     mp="$(free_mount_point)" || return 0
     mount -t vfat -o "$MOUNT_OPTIONS_RO" "$dev" "$mp" 2>/dev/null || true
@@ -475,22 +498,33 @@ finish() {
     f_id="$1"; f_uuid="$2"; f_dev="$3"; f_fs="$4"; f_mode="$5"; f_outcome="$6"
     f_repair_rc="$7"; f_verify_rc="$8"; shift 8
     f_complete="$1"; f_changes="$2"; f_hold="$3"
+    # A swap during fsck must not mount the replacement using the old UUID.
+    [ "$(resolve_uuid "$f_uuid")" = "$f_dev" ] || f_dev=""
     if [ "$f_hold" != none ]; then
-        protect_mount "$f_dev"
+        protect_mount "$f_dev" || return 1
     fi
     f_mount_state="$(current_mount_state "$f_dev")"
     f_label="$(device_label "$f_dev")"
     if ! write_result "$f_id" "$f_uuid" "$f_label" "$f_dev" "$f_fs" "$f_mode" "$f_outcome" \
         "$f_repair_rc" "$f_verify_rc" "$f_mount_state" "$f_complete" "$f_changes"; then
-        say "could not persist result for $f_id; leaving request and hold in place"
+        say "could not persist result for $f_id; restoring protection"
+        protect_mount "$f_dev"
         return 1
     fi
     if [ "$f_hold" = none ]; then
-        atomic_remove "$HOLDS_DIR/$f_uuid" || return 1
+        if ! atomic_remove "$HOLDS_DIR/$f_uuid"; then
+            set_hold "$f_uuid" failed "$f_id"
+            protect_mount "$f_dev"
+            return 1
+        fi
     else
         set_hold "$f_uuid" "$f_hold" "$f_id" || return 1
     fi
-    atomic_remove "$REQUEST" || return 1
+    if ! atomic_remove "$REQUEST"; then
+        set_hold "$f_uuid" failed "$f_id"
+        protect_mount "$f_dev"
+        return 1
+    fi
     prune_old_logs "$f_id"
     hold_flag_refresh
     say "request $f_id outcome=$f_outcome mount=$f_mount_state"
@@ -515,29 +549,21 @@ fsck_still_running() {
     pidof "${FSCK_FAT##*/}" >/dev/null 2>&1 || pidof fsck.fat >/dev/null 2>&1
 }
 
-cmd_boot() {
-    internal_storage_ready || {
-        say "internal storage unavailable; cards stay protected by the udev gate"
-        return 0
-    }
-
-    if [ ! -f "$REQUEST" ]; then
-        # No work: keep failed holds read-only for this boot.
-        for hold in "$HOLDS_DIR"/*; do
-            [ -f "$hold" ] || continue
-            h_uuid="${hold##*/}"
-            uuid_is_valid "$h_uuid" || continue
-            h_dev="$(resolve_uuid "$h_uuid")" || continue
-            protect_mount "$h_dev"
-        done
-        hold_flag_refresh
-        return 0
-    fi
-
+# A subshell keeps per-attempt variables separate from the boot iterator. The
+# boot command holds the usbmount lock through request/result publication and
+# hold removal; explicit request publication uses the same lock.
+run_request() (
     id="$(kv_get "$REQUEST" request_id)"
     uuid="$(kv_get "$REQUEST" uuid)"
     fs_type="$(kv_get "$REQUEST" fs_type)"
     mode="$(kv_get "$REQUEST" mode)"
+    RESULT_ORIGIN="$(kv_get "$REQUEST" origin)"
+    case "$RESULT_ORIGIN" in automatic-check) ;; *) RESULT_ORIGIN=user-request ;; esac
+    deadline="$REPAIR_DEADLINE_S"
+    if [ "$RESULT_ORIGIN" = automatic-check ]; then
+        deadline="$CHECK_DEADLINE_S"
+        mode=check
+    fi
     attempts="$(kv_get "$REQUEST" attempts)"
     if ! id_is_valid "$id" || ! uuid_is_valid "$uuid"; then
         # Unreadable request: never guess a device. Leave it for diagnostics.
@@ -560,35 +586,35 @@ cmd_boot() {
         # automatic repair; another pass needs a new explicit request.
         [ "$resolve_rc" -eq 0 ] || device=""
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" interrupted "" "" false "$changes" failed
-        return 0
+        return $?
     fi
     if [ "$mode" = invalid ]; then
         finish "$id" "$uuid" "" "$fs_type" "$mode" failed "" "" false "$changes" failed
-        return 0
+        return $?
     fi
     if [ "$resolve_rc" -ne 0 ]; then
         finish "$id" "$uuid" "" "$fs_type" "$mode" "$device" "" "" false "$changes" failed
-        return 0
+        return $?
     fi
     actual_type="$(device_fs_type "$device")"
-    if [ -n "$actual_type" ] && [ "$actual_type" != "$fs_type" ]; then
+    case "$actual_type" in vfat|msdos) ;; *) actual_type=unsupported ;; esac
+    if [ "$actual_type" != "$fs_type" ]; then
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" unsupported "" "" false "$changes" failed
-        return 0
+        return $?
     fi
     if [ ! -x "$FSCK_FAT" ] || block_write_protected "$device"; then
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" unsupported "" "" false "$changes" failed
-        return 0
+        return $?
     fi
-    if ! external_power_online; then
+    if [ "$mode" = repair ] && ! external_power_online; then
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" power-required "" "" false "$changes" failed
-        return 0
+        return $?
     fi
 
-    if ! lock_acquire; then
-        finish "$id" "$uuid" "$device" "$fs_type" "$mode" busy "" "" false "$changes" failed
-        return 0
+    if fsck_still_running; then
+        say "another checker is still running; leaving request protected"
+        return 1
     fi
-    # From here the mount lock is held until the outcome is fixed.
     for mp in $(device_mount_points "$device"); do
         printf 'unmounting %s\n' "$mp" >>"$log"
         umount "$mp" >>"$log" 2>&1 || true
@@ -596,11 +622,10 @@ cmd_boot() {
     # Revalidate: same card, no remaining references (bind aliases included).
     recheck="$(resolve_uuid "$uuid")"
     if [ "$recheck" != "$device" ] || device_mounted "$device"; then
-        lock_release
         outcome=busy
         [ "$recheck" != "$device" ] && outcome=not-found
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" "$outcome" "" "" false "$changes" failed
-        return 0
+        return $?
     fi
 
     if ! atomic_write "$REQUEST" <<EOF
@@ -610,20 +635,51 @@ source=$(kv_get "$REQUEST" source)
 fs_type=$fs_type
 device=$device
 mode=$mode
+origin=$RESULT_ORIGIN
 attempts=1
 EOF
     then
-        lock_release
         say "could not commit the attempt; not starting fsck"
         protect_mount "$device"
-        return 0
+        return 1
     fi
 
     start="$(date +%s 2>/dev/null || echo 0)"
     repair_rc=""
+    precheck_rc=1
     if [ "$mode" = repair ]; then
+        printf '=== precheck: %s -n -v %s\n' "$FSCK_FAT" "$device" >>"$log"
+        run_bounded "$deadline" "$log" "$FSCK_FAT" -n -v "$device"
+        precheck_rc=$?
+        fsck_still_running && precheck_rc=124
+        case "$precheck_rc" in
+            0|1) ;;
+            *)
+                outcome=verify-failed
+                case "$precheck_rc" in 124|137) outcome=timed-out ;; esac
+                finish "$id" "$uuid" "$device" "$fs_type" "$mode" "$outcome" "" "$precheck_rc" false "$changes" failed
+                return $?
+                ;;
+        esac
+        if [ "$(resolve_uuid "$uuid")" != "$device" ] || device_mounted "$device"; then
+            finish "$id" "$uuid" "$device" "$fs_type" "$mode" busy "" "$precheck_rc" false "$changes" failed
+            return $?
+        fi
+        repair_rc=0
+    fi
+    if [ "$mode" = repair ] && [ "$precheck_rc" != 0 ]; then
+        if ! external_power_online; then
+            finish "$id" "$uuid" "$device" "$fs_type" "$mode" power-required "" "$precheck_rc" false "$changes" failed
+            return $?
+        fi
+        now="$(date +%s 2>/dev/null || echo 0)"
+        remaining=$((deadline - (now - start)))
+        if [ "$remaining" -le 0 ]; then
+            finish "$id" "$uuid" "$device" "$fs_type" "$mode" timed-out "" "$precheck_rc" false "$changes" failed
+            return $?
+        fi
         printf '=== repair: %s -a -v %s\n' "$FSCK_FAT" "$device" >>"$log"
-        run_bounded "$REPAIR_DEADLINE_S" "$log.repair" "$FSCK_FAT" -a -v "$device"
+        run_bounded "$remaining" "$log.repair" "$FSCK_FAT" -a -v "$device"
         repair_rc=$?
         cat "$log.repair" >>"$log" 2>/dev/null
         parse_reported_changes "$log.repair" >"$changes"
@@ -635,50 +691,44 @@ EOF
     case "$repair_rc" in 124|137) timed_out=1 ;; esac
     if [ "$timed_out" -eq 1 ] || fsck_still_running; then
         # Keep the card unmounted until the process is confirmed gone.
-        lock_release
-        if fsck_still_running; then
-            say "fsck still running after the deadline; card stays unmounted"
-            write_result "$id" "$uuid" "" "$device" "$fs_type" "$mode" timed-out \
-                "$repair_rc" "" unmounted false "$changes" &&
-                set_hold "$uuid" failed "$id" && atomic_remove "$REQUEST"
-            return 0
-        fi
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" timed-out "$repair_rc" "" false "$changes" failed
-        return 0
+        return $?
     fi
 
     if ! sync; then
-        lock_release
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" failed "$repair_rc" "" false "$changes" failed
-        return 0
+        return $?
     fi
 
     now="$(date +%s 2>/dev/null || echo 0)"
-    remaining=$((REPAIR_DEADLINE_S - (now - start)))
-    [ "$remaining" -ge 30 ] || remaining=30
+    remaining=$((deadline - (now - start)))
+    if [ "$remaining" -le 0 ]; then
+        finish "$id" "$uuid" "$device" "$fs_type" "$mode" timed-out "$repair_rc" "" false "$changes" failed
+        return $?
+    fi
     printf '=== verify: %s -n %s\n' "$FSCK_FAT" "$device" >>"$log"
     run_bounded "$remaining" "$log" "$FSCK_FAT" -n "$device"
     verify_rc=$?
     printf '=== verify exit %s\n' "$verify_rc" >>"$log"
+    if fsck_still_running; then
+        verify_rc=124
+    fi
     case "$verify_rc" in
         124|137)
-            lock_release
             finish "$id" "$uuid" "$device" "$fs_type" "$mode" timed-out "$repair_rc" "$verify_rc" false "$changes" failed
-            return 0
+            return $?
             ;;
     esac
 
     # Success needs a repair pass that did not fail fatally (0 clean, 1 changed)
     # and an independent check that reports a consistent filesystem.
     if [ "$mode" = repair ] && [ "$repair_rc" != 0 ] && [ "$repair_rc" != 1 ]; then
-        lock_release
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" failed "$repair_rc" "$verify_rc" false "$changes" failed
-        return 0
+        return $?
     fi
     if [ "$verify_rc" != 0 ]; then
-        lock_release
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" verify-failed "$repair_rc" "$verify_rc" false "$changes" failed
-        return 0
+        return $?
     fi
 
     outcome=clean
@@ -688,20 +738,18 @@ EOF
         complete=false
     fi
 
+    if [ "$(resolve_uuid "$uuid")" != "$device" ] || device_mounted "$device"; then
+        finish "$id" "$uuid" "" "$fs_type" "$mode" not-found "$repair_rc" "$verify_rc" "$complete" "$changes" failed
+        return $?
+    fi
     mp="$(free_mount_point)"
     if [ -z "$mp" ] || ! mount -t vfat -o "$MOUNT_OPTIONS_RW" "$device" "$mp" >>"$log" 2>&1 ||
         [ "$(resolve_uuid "$uuid")" != "$device" ] || ! device_mounted_rw "$device"; then
-        lock_release
-        write_result "$id" "$uuid" "" "$device" "$fs_type" "$mode" remount-failed \
-            "$repair_rc" "$verify_rc" "$(current_mount_state "$device")" "$complete" "$changes" &&
-            set_hold "$uuid" failed "$id" && atomic_remove "$REQUEST"
-        protect_mount "$device"
-        hold_flag_refresh
-        say "request $id repair verified but writable remount failed"
-        return 0
+        finish "$id" "$uuid" "$device" "$fs_type" "$mode" remount-failed \
+            "$repair_rc" "$verify_rc" "$complete" "$changes" failed
+        return $?
     fi
-    lock_release
-    finish "$id" "$uuid" "$device" "$fs_type" "$mode" "$outcome" "$repair_rc" "$verify_rc" "$complete" "$changes" none
+    finish "$id" "$uuid" "$device" "$fs_type" "$mode" "$outcome" "$repair_rc" "$verify_rc" "$complete" "$changes" none || return 1
 
     # Best-effort copy of the log onto the repaired card.
     logs_dir="$mp/.userdata/mlp1/logs"
@@ -709,7 +757,52 @@ EOF
         cp "$log" "$logs_dir/storage-repair-$id.log" 2>/dev/null || true
     fi
     return 0
-}
+)
+
+cmd_boot() (
+    lock_acquire || { say "mount lock unavailable; leaving cards protected"; return 1; }
+    trap 'lock_release' EXIT
+    trap 'exit 1' HUP INT TERM
+    internal_storage_ready || {
+        say "internal storage unavailable; cards stay protected by the udev gate"
+        [ ! -e "$HOLD_FLAG" ] && [ ! -f "$REQUEST" ]
+        return $?
+    }
+    mkdir -p "$CHECKED_DIR" || return 1
+    if [ -f "$REQUEST" ]; then
+        boot_uuid="$(kv_get "$REQUEST" uuid)"
+        # Fresh explicit work takes precedence and must not be retried on a
+        # later daemon generation. Interrupted repairs may get a read-only
+        # check after their interrupted result is recorded.
+        if uuid_is_valid "$boot_uuid" && [ "$(kv_get "$REQUEST" attempts)" = 0 ]; then
+            mkdir "$CHECKED_DIR/$boot_uuid" 2>/dev/null || true
+        fi
+        run_request || return 1
+        [ ! -f "$REQUEST" ] || return 1
+    fi
+    for boot_hold in "$HOLDS_DIR"/*; do
+        [ -f "$boot_hold" ] || continue
+        boot_uuid="${boot_hold##*/}"
+        uuid_is_valid "$boot_uuid" || continue
+        boot_device="$(resolve_uuid "$boot_uuid")" || continue
+        boot_type="$(device_fs_type "$boot_device")"
+        case "$boot_type" in vfat|msdos) ;; *) continue ;; esac
+        mkdir "$CHECKED_DIR/$boot_uuid" 2>/dev/null || continue
+        boot_id="$(new_request_id)"
+        atomic_write "$REQUEST" <<EOF || return 1
+request_id=$boot_id
+uuid=$boot_uuid
+source=held-card
+fs_type=$boot_type
+device=$boot_device
+mode=check
+origin=automatic-check
+attempts=0
+EOF
+        run_request || return 1
+    done
+    hold_flag_refresh
+)
 
 cmd_gate_udev() {
     uuid="${1:-}"
@@ -757,7 +850,17 @@ cmd_uninstall_cleanup() {
 case "${1:-}" in
     request) shift; cmd_request "$@" ;;
     boot) cmd_boot ;;
-    pending) [ -f "$REQUEST" ] ;;
+    pending)
+        [ ! -f "$REQUEST" ] || exit 0
+        for pending_hold in "$HOLDS_DIR"/*; do
+            [ -f "$pending_hold" ] || continue
+            pending_uuid="${pending_hold##*/}"
+            uuid_is_valid "$pending_uuid" || continue
+            [ ! -d "$CHECKED_DIR/$pending_uuid" ] || continue
+            resolve_uuid "$pending_uuid" >/dev/null 2>&1 && exit 0
+        done
+        exit 1
+        ;;
     has-failed-hold)
         # Asked after boot, when Leaf could not start. Any hold counts: a
         # pending one still here means its request could not run. Only a held
@@ -770,8 +873,8 @@ case "${1:-}" in
         for hold in "$HOLDS_DIR"/*; do
             [ -f "$hold" ] || continue
             uuid_is_valid "${hold##*/}" || continue
-            resolve_uuid "${hold##*/}" >/dev/null 2>&1 || continue
-            exit 0
+            held_device="$(resolve_uuid "${hold##*/}")"
+            case "$held_device" in /dev/*|ambiguous) exit 0 ;; esac
         done
         exit 1
         ;;

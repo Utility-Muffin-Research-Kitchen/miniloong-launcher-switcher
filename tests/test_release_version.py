@@ -126,6 +126,21 @@ class ReleaseVersionTests(unittest.TestCase):
                 self.assertIn("mount --bind / \"$ROOT_VIEW\"", script)
                 self.assertIn('MOUNT_STUBS="/mnt/sdcard /media/sdcard1"', script)
 
+    def test_power_barrier_is_paired_in_install_and_recovery(self):
+        for script in (MODULE.build_installer_script(), MODULE.build_managed_installer_script("candidate")):
+            self.assertIn(MODULE.read_required(MODULE.POWER_TRANSITION_PATH).rstrip(), script)
+            self.assertIn('"$POWER_TRANSITION_TMP" "$POWER_TRANSITION"', script)
+            self.assertIn('UMRK_POWER_REQUEST_DIR', script)
+            self.assertIn('origin=automatic-check', script)
+            self.assertNotIn('__POWER_TRANSITION__', script)
+        recovery = MODULE.build_recovery_script()
+        self.assertIn(MODULE.read_required(MODULE.POWER_TRANSITION_PATH).rstrip(), recovery)
+        self.assertIn('/run/umrk-recovery-power-transition', MODULE.recovery_command("reboot"))
+        for command in (MODULE.install_command("reboot"), MODULE.recovery_command("reboot")):
+            self.assertIn('exec env -i', command)
+            self.assertIn('while true; do sleep 5; done', command)
+            self.assertNotIn('reboot -f', command)
+
     def test_uninstaller_unlocks_before_removing_helper(self):
         script = MODULE.read_required(MODULE.UNINSTALLER_PATH)
         unlock = script.index('"$MOUNT_STUBS" unlock')
