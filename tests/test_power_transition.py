@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from test_session_log_fallback import session_functions
@@ -143,7 +144,7 @@ stop_wifi_workers() { :; }
 stop_leaf_owned_loong() { :; }
 stop_owned_process() { :; }
 show_storage_display() { :; }
-wait_recording_converters() { :; }
+pause_recording() { :; }
 finish_power_transition reboot
 echo old-shell-returned
 '''
@@ -187,12 +188,104 @@ PATH="$LOONG_POWER_HANDOFF_DIR:$PATH" sh -c reboot
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = (self.root/'ctl.log').read_text()
-        for action in ('poweroff', 'reboot'):
+        for action, reason in (('poweroff', 'low-battery'), ('reboot', 'menu')):
             self.assertIn('--socket|/tmp/jawaka-runtime/jawakad.sock|request|'
-                          '{"type":"platform-action","action":"%s","value":0}|' % action, calls)
+                          '{"type":"platform-action","action":"%s","value":0,"reason":"%s"}|'
+                          % (action, reason), calls)
         env['UMRK_BIN_PATH'] = str(self.root/'missing')
         result = subprocess.run(['sh', '-c', session_functions() + 'prepare_loong_power_handoff'],
                                 env=env, capture_output=True, text=True, timeout=10)
         self.assertNotEqual(result.returncode, 0)
+
+
+FORCE_FAKE = r'''#!/usr/bin/env python3
+import os, sys, time
+from pathlib import Path
+root = Path(os.environ['FORCE_FIXTURE'])
+name = Path(sys.argv[0]).name
+now = (root/'uptime').read_text().split()[0]
+with (root/'events').open('a') as f: f.write(f'{now} {name} {" ".join(sys.argv[1:])}\n')
+if name == 'sync' and os.environ.get('FORCE_SYNC') == 'hang':
+    time.sleep(30)
+elif name == 'dmesg':
+    kmsg = root/'kmsg'
+    text = kmsg.read_text() if kmsg.exists() else ''
+    sys.stdout.write(text)
+    if os.environ.get('FORCE_REMOUNT') == 'confirm' and (root/'sysrq-trigger').exists():
+        sys.stdout.write('sysrq: Emergency Remount complete\n')
+'''
+
+
+class ForceTest(unittest.TestCase):
+    """The forced power-off after a paused shutdown must reach the kernel call
+    within 5.0 s of the press, whatever the flush and remount do."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        bin_dir = self.root/'bin'; bin_dir.mkdir()
+        for name in ('sync', 'dmesg', 'busybox'):
+            p = bin_dir/name; p.write_text(FORCE_FAKE); p.chmod(0o755)
+        self.t0 = time.monotonic()
+        self.stop = False
+        self.write_uptime()
+        self.clock = threading.Thread(target=self.tick, daemon=True)
+        self.clock.start()
+        self.env = dict(os.environ, FORCE_FIXTURE=str(self.root),
+                        PATH=f'{bin_dir}:{os.environ["PATH"]}',
+                        UMRK_POWER_UPTIME=str(self.root/'uptime'),
+                        UMRK_POWER_KMSG=str(self.root/'kmsg'),
+                        UMRK_POWER_SYSRQ_ENABLE=str(self.root/'sysrq'),
+                        UMRK_POWER_SYSRQ_TRIGGER=str(self.root/'sysrq-trigger'))
+
+    def tearDown(self):
+        self.stop = True
+        self.clock.join()
+        self.tmp.cleanup()
+
+    def write_uptime(self):
+        tmp = self.root/'uptime.tmp'
+        tmp.write_text(f'{1000 + time.monotonic() - self.t0:.2f} 0.00\n')
+        tmp.replace(self.root/'uptime')
+
+    def tick(self):
+        while not self.stop:
+            self.write_uptime()
+            time.sleep(0.01)
+
+    def force(self, held_s=2.0, **extra):
+        press = int((1000 + time.monotonic() - self.t0 - held_s) * 100)
+        log = self.root/'force.log'
+        with log.open('w') as out:
+            subprocess.run([str(HELPER), 'force', 'poweroff', str(press)],
+                           env=dict(self.env, **extra), stdout=out, stderr=out,
+                           timeout=20)
+        result = subprocess.CompletedProcess([], 0, log.read_text(), '')
+        events = (self.root/'events').read_text().splitlines()
+        power = [e for e in events if ' busybox ' in e]
+        self.assertEqual(len(power), 1, result.stdout + result.stderr)
+        at, _, args = power[0].split(' ', 2)
+        return float(at) * 100 - press, args, result
+
+    def test_hung_flush_and_unconfirmed_remount_still_meet_the_deadline(self):
+        elapsed_cs, args, result = self.force(FORCE_SYNC='hang', FORCE_REMOUNT='never')
+        self.assertEqual(args, 'poweroff -f')
+        self.assertLessEqual(elapsed_cs, 510, result.stdout)
+        self.assertIn('flush still running', result.stdout)
+        self.assertIn('not confirmed', result.stdout)
+
+    def test_order_is_nonce_flush_sysrq_then_power(self):
+        elapsed_cs, args, result = self.force(FORCE_REMOUNT='confirm')
+        self.assertLess(elapsed_cs, 300, result.stdout)
+        self.assertIn('emergency read-only remount complete', result.stdout)
+        self.assertIn('umrk-force-', (self.root/'kmsg').read_text())
+        self.assertEqual((self.root/'sysrq').read_text(), '1\n')
+        # The trigger file keeps only the last write; the log shows all three.
+        self.assertEqual((self.root/'sysrq-trigger').read_text(), 's\n')
+
+    def test_late_force_skips_waits(self):
+        # Force decided late (already 4.9 s after the press) goes straight on.
+        elapsed_cs, _, result = self.force(held_s=4.9, FORCE_SYNC='hang', FORCE_REMOUNT='never')
+        self.assertLessEqual(elapsed_cs, 530, result.stdout)
 
 if __name__ == '__main__': unittest.main()

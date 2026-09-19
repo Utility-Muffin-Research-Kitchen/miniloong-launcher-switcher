@@ -3,12 +3,82 @@
 # closed card descriptors and changed cwd to /. Never fall back to an unchecked
 # reboot: PID 1 is blocked in rcS while the Leaf session owns startup.
 set -u
+mode=barrier
+if [ "${1:-}" = force ]; then
+    mode=force
+    shift
+fi
 case "${1:-}" in reboot|poweroff) action="$1" ;; *) exit 2 ;; esac
 cd / || exit 1
 MOUNTINFO="${UMRK_POWER_MOUNTINFO:-/proc/self/mountinfo}"
 LOCK="${UMRK_USBMOUNT_LOCK:-/var/run/usbmount/.mount}"
+UPTIME="${UMRK_POWER_UPTIME:-/proc/uptime}"
+KMSG="${UMRK_POWER_KMSG:-/dev/kmsg}"
+SYSRQ_ENABLE="${UMRK_POWER_SYSRQ_ENABLE:-/proc/sys/kernel/sysrq}"
+SYSRQ_TRIGGER="${UMRK_POWER_SYSRQ_TRIGGER:-/proc/sysrq-trigger}"
 
 fail() { echo "umrk-power-transition: $*" >&2; exit 1; }
+
+# Uptime in hundredths of a second.
+uptime_cs() {
+    awk '{ printf "%d\n", $1 * 100 }' "$UPTIME" 2>/dev/null
+}
+
+# wait_until DEADLINE_CS COMMAND...: poll until COMMAND succeeds or the deadline.
+wait_until() {
+    deadline="$1"
+    shift
+    while ! "$@"; do
+        [ "$(uptime_cs)" -lt "$deadline" ] || return 1
+        sleep .05
+    done
+}
+
+sync_finished() { ! kill -0 "$sync_pid" 2>/dev/null; }
+
+emergency_remount_done() {
+    dmesg 2>/dev/null | awk -v nonce="$nonce" '
+        index($0, nonce) { seen = 1; next }
+        seen && /Emergency Remount complete/ { found = 1 }
+        END { exit found ? 0 : 1 }'
+}
+
+# The user held the power button to turn off anyway after a paused shutdown.
+# Cards that were not proven closed were held for a next-boot check when the
+# pause began, so nothing here writes storage. Every wait ends by a deadline
+# counted from the press, so the kernel call lands before the PMIC hold cut
+# (earliest measured 5.7 s). Uninterruptible I/O is never waited for.
+force_power() {
+    press="${1:-}"
+    now="$(uptime_cs)"
+    case "$press" in ''|*[!0-9]*) press=$((now - 200)) ;; esac
+    nonce="umrk-force-$$-$now"
+    echo "umrk-power-transition: force start $nonce" >"$KMSG" 2>/dev/null || true
+    echo "umrk-power-transition: forcing $action, $((now - press))0 ms after the press"
+    sync </dev/null >/dev/null 2>&1 &
+    sync_pid=$!
+    if wait_until $((press + 280)) sync_finished; then
+        echo "umrk-power-transition: flush finished"
+    else
+        echo "umrk-power-transition: flush still running at its deadline"
+    fi
+    echo 1 >"$SYSRQ_ENABLE" 2>/dev/null || true
+    for key in s u s; do
+        echo "$key" >"$SYSRQ_TRIGGER" 2>/dev/null || true
+    done
+    if wait_until $((press + 470)) emergency_remount_done; then
+        echo "umrk-power-transition: emergency read-only remount complete"
+    else
+        echo "umrk-power-transition: emergency remount not confirmed at its deadline"
+    fi
+    echo "umrk-power-transition: forced $action at $(( $(uptime_cs) - press ))0 ms"
+    busybox "$action" -f
+    fail "kernel power command returned"
+}
+
+if [ "$mode" = force ]; then
+    force_power "${2:-}"
+fi
 # major 0 is a kernel/virtual filesystem. Persistent MLP1 filesystems are
 # block-backed (including eMMC, both SD slots and any mounted loop devices).
 # Include mount and superblock access separately: a read-only bind is not a
