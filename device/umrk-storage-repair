@@ -42,6 +42,8 @@ CHECK_DEADLINE_S="${UMRK_STORAGE_CHECK_DEADLINE_S:-120}"
 # /run is tmpfs: one automatic check per UUID per kernel boot, not per session.
 CHECKED_DIR="${UMRK_STORAGE_CHECKED_DIR:-/run/umrk-storage-checked}"
 RESULT_ORIGIN=user-request
+# Why a hold existed, carried into its automatic check (e.g. paused-shutdown).
+RESULT_TRIGGER=
 KILL_GRACE_S="${UMRK_STORAGE_REPAIR_KILL_GRACE_S:-10}"
 MIN_FREE_KB="${UMRK_STORAGE_MIN_FREE_KB:-16384}"
 LOG_KEEP_BYTES="${UMRK_STORAGE_LOG_KEEP_BYTES:-8388608}"
@@ -79,6 +81,13 @@ uuid_is_valid() {
         ''|*[!A-Za-z0-9-]*) return 1 ;;
     esac
     [ "${#1}" -le 63 ]
+}
+
+trigger_is_valid() {
+    case "$1" in
+        ''|*[!a-z-]*) return 1 ;;
+    esac
+    [ "${#1}" -le 31 ]
 }
 
 id_is_valid() {
@@ -430,6 +439,7 @@ write_result() {
   "fs_type": "$r_fs",
   "mode": "$r_mode",
   "origin": "$RESULT_ORIGIN",
+  "trigger": "$RESULT_TRIGGER",
   "outcome": "$r_outcome",
   "repair_exit_code": ${r_repair_rc:-null},
   "verify_exit_code": ${r_verify_rc:-null},
@@ -446,6 +456,7 @@ device=$r_device
 fs_type=$r_fs
 mode=$r_mode
 origin=$RESULT_ORIGIN
+trigger=$RESULT_TRIGGER
 outcome=$r_outcome
 repair_exit_code=${r_repair_rc:-none}
 verify_exit_code=${r_verify_rc:-none}
@@ -559,6 +570,8 @@ run_request() (
     mode="$(kv_get "$REQUEST" mode)"
     RESULT_ORIGIN="$(kv_get "$REQUEST" origin)"
     case "$RESULT_ORIGIN" in automatic-check) ;; *) RESULT_ORIGIN=user-request ;; esac
+    RESULT_TRIGGER="$(kv_get "$REQUEST" trigger)" || RESULT_TRIGGER=
+    trigger_is_valid "$RESULT_TRIGGER" || RESULT_TRIGGER=
     deadline="$REPAIR_DEADLINE_S"
     if [ "$RESULT_ORIGIN" = automatic-check ]; then
         deadline="$CHECK_DEADLINE_S"
@@ -788,6 +801,8 @@ cmd_boot() (
         boot_type="$(device_fs_type "$boot_device")"
         case "$boot_type" in vfat|msdos) ;; *) continue ;; esac
         mkdir "$CHECKED_DIR/$boot_uuid" 2>/dev/null || continue
+        boot_trigger="$(kv_get "$boot_hold" trigger)" || boot_trigger=
+        trigger_is_valid "$boot_trigger" || boot_trigger=
         boot_id="$(new_request_id)"
         atomic_write "$REQUEST" <<EOF || return 1
 request_id=$boot_id
@@ -797,11 +812,47 @@ fs_type=$boot_type
 device=$boot_device
 mode=check
 origin=automatic-check
+trigger=$boot_trigger
 attempts=0
 EOF
         run_request || return 1
     done
     hold_flag_refresh
+)
+
+# pre-arm TRIGGER UUID...: a paused shutdown could not prove these cards
+# closed. Hold each for a read-only check on the next boot before anything uses
+# it. An existing hold is kept as it is. Exit 0 only when every card is durably
+# held; holds already written stay, since they only add a check.
+cmd_pre_arm() (
+    trigger="${1:-}"
+    [ "$#" -gt 0 ] && shift
+    trigger_is_valid "$trigger" || die "invalid-trigger"
+    [ "$#" -gt 0 ] || return 0
+    lock_acquire || die "busy"
+    trap 'lock_release' EXIT
+    trap 'exit 1' HUP INT TERM
+    if ! internal_storage_ready; then
+        # A failed power barrier may already have closed internal storage.
+        mount -o remount,rw "$INTERNAL_MOUNT" 2>/dev/null || true
+        internal_storage_ready || die "internal-storage-unavailable"
+    fi
+    hold_flag_set || die "hold-flag-unavailable"
+    armed=0
+    for card in "$@"; do
+        uuid_is_valid "$card" || continue
+        if [ -f "$HOLDS_DIR/$card" ]; then
+            armed=$((armed + 1))
+            continue
+        fi
+        atomic_write "$HOLDS_DIR/$card" <<EOF || continue
+state=unverified
+request_id=$(new_request_id)
+trigger=$trigger
+EOF
+        armed=$((armed + 1))
+    done
+    [ "$armed" -eq "$#" ]
 )
 
 cmd_gate_udev() {
@@ -850,6 +901,7 @@ cmd_uninstall_cleanup() {
 case "${1:-}" in
     request) shift; cmd_request "$@" ;;
     boot) cmd_boot ;;
+    pre-arm) shift; cmd_pre_arm "$@" ;;
     pending)
         [ ! -f "$REQUEST" ] || exit 0
         for pending_hold in "$HOLDS_DIR"/*; do
@@ -882,7 +934,7 @@ case "${1:-}" in
     status) cmd_status ;;
     uninstall-cleanup) cmd_uninstall_cleanup ;;
     *)
-        echo "Usage: $0 {request|boot|pending|has-failed-hold|gate-udev|status|uninstall-cleanup}" >&2
+        echo "Usage: $0 {request|boot|pre-arm|pending|has-failed-hold|gate-udev|status|uninstall-cleanup}" >&2
         exit 2
         ;;
 esac
