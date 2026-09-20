@@ -56,7 +56,10 @@ case "$1" in
         [ -n "${FAKE_REPAIR_OUTPUT:-}" ] && printf '%b' "$FAKE_REPAIR_OUTPUT"
         exit "${FAKE_REPAIR_RC:-0}" ;;
     -n)
-        [ "${2:-}" != -v ] || exit "${FAKE_PRECHECK_RC:-1}"
+        if [ "${2:-}" = -v ]; then
+            [ "${FAKE_PRECHECK_BATTERY_DROP:-0}" != 1 ] || echo 29 >"$UMRK_POWER_SUPPLY_DIR/battery/capacity"
+            exit "${FAKE_PRECHECK_RC:-1}"
+        fi
         [ -n "${FAKE_VERIFY_OUTPUT:-}" ] && printf '%b' "$FAKE_VERIFY_OUTPUT"
         exit "${FAKE_VERIFY_RC:-0}" ;;
 esac
@@ -129,7 +132,7 @@ reset_fixture() {
     root="$fixture/case"
     rm -rf "$root"
     mkdir -p "$root/state" "$root/by-uuid" "$root/sys/mmcblk1/device" "$root/sys/mmcblk3/device" \
-        "$root/sys/mmcblk0" "$root/power/ac" "$root/power/usb" "$root/mnt/sdcard" \
+        "$root/sys/mmcblk0" "$root/power/ac" "$root/power/usb" "$root/power/battery" "$root/mnt/sdcard" \
         "$root/media/sdcard1" "$root/etc" "$root/run"
     echo SD >"$root/sys/mmcblk1/device/type"
     echo SD >"$root/sys/mmcblk3/device/type"
@@ -137,6 +140,7 @@ reset_fixture() {
     echo 0 >"$root/sys/mmcblk3/ro"
     echo 1 >"$root/power/ac/online"
     echo 0 >"$root/power/usb/online"
+    echo 60 >"$root/power/battery/capacity"
     ln -s ../../mmcblk1 "$root/by-uuid/22A4-0814"
     ln -s ../../mmcblk3 "$root/by-uuid/04B1-0820"
     ln -s ../../mmcblk0p12 "$root/by-uuid/166f00b1-1621-4d9f-b6cb-5ff8b0f8b13b"
@@ -162,14 +166,17 @@ MOUNTS
     export FAKE_MOUNTS="$root/mounts" FAKE_EVENTS="$root/events"
     unset FAKE_MOUNT_FAIL FAKE_UMOUNT_BUSY FAKE_REPAIR_RC FAKE_VERIFY_RC FAKE_REPAIR_OUTPUT \
         FAKE_VERIFY_OUTPUT FAKE_TIMEOUT_REPAIR FAKE_TIMEOUT_VERIFY FAKE_SYNC_FAIL FAKE_LOCK_FAIL \
-        FAKE_BLKID FAKE_DF_FREE FAKE_FSCK_ALIVE FAKE_RESULT_SYNC_FAIL FAKE_REQUEST_SYNC_FAIL FAKE_PRECHECK_RC 2>/dev/null || true
+        FAKE_BLKID FAKE_DF_FREE FAKE_FSCK_ALIVE FAKE_RESULT_SYNC_FAIL FAKE_REQUEST_SYNC_FAIL FAKE_PRECHECK_RC \
+        FAKE_PRECHECK_BATTERY_DROP 2>/dev/null || true
     export FAKE_BLKID='/dev/mmcblk1: LABEL="MLPPRDLEAF" UUID="22A4-0814" TYPE="vfat"\n/dev/mmcblk3: LABEL="MLPPRDROMS" UUID="04B1-0820" TYPE="vfat"\n'
     STATE="$root/state"
 }
 
 request_launcher() {
+    mode="${1:-repair}"
+    [ "$#" -eq 0 ] || shift
     "$RUNNER" request --uuid 22A4-0814 --source launcher_sd --fs-type vfat \
-        --device /dev/mmcblk1 --mode "${1:-repair}"
+        --device /dev/mmcblk1 --mode "$mode" "$@"
 }
 
 summary_value() {
@@ -463,12 +470,47 @@ grep -q '^fsck -n /dev/mmcblk1' "$root/events" || fail "PC repair wasn't verifie
 ! grep -q '^fsck -a' "$root/events" || fail "PC repair ran modifying fsck"
 [ -f "$STATE/last-results/22A4-0814" ] || fail "per-card result absent"
 
-# Battery permits an explicit check but still refuses modifying repair.
+# Battery permits an explicit check and a confirmed repair at 30% or higher.
 reset_fixture
 echo 0 >"$root/power/ac/online"
 request_launcher check >/dev/null || fail "battery check refused"
 "$RUNNER" boot >/dev/null
 expect_outcome clean "battery check"
+
+reset_fixture
+echo 0 >"$root/power/ac/online"
+echo 30 >"$root/power/battery/capacity"
+if request_launcher repair 2>"$root/err"; then fail "battery repair without opt-in accepted"; fi
+grep -q power-required "$root/err" || fail "missing opt-in reason"
+echo 29 >"$root/power/battery/capacity"
+if request_launcher repair --allow-battery 2>"$root/err"; then fail "29% battery repair accepted"; fi
+grep -q power-required "$root/err" || fail "low battery reason"
+rm "$root/power/battery/capacity"
+if request_launcher repair --allow-battery 2>"$root/err"; then fail "unknown battery repair accepted"; fi
+grep -q power-required "$root/err" || fail "unknown battery reason"
+echo 30 >"$root/power/battery/capacity"
+request_launcher repair --allow-battery >/dev/null || fail "30% battery repair refused"
+grep -qx 'allow_battery=1' "$STATE/request" || fail "battery opt-in not saved"
+"$RUNNER" boot >/dev/null
+expect_outcome clean "30% battery repair"
+grep -q '^fsck -a' "$root/events" || fail "battery repair did not run"
+
+reset_fixture
+echo 0 >"$root/power/ac/online"
+request_launcher repair --allow-battery >/dev/null
+echo 29 >"$root/power/battery/capacity"
+"$RUNNER" boot >/dev/null
+expect_outcome power-required "battery dropped before boot"
+expect_no_fsck "low battery at boot"
+
+reset_fixture
+echo 0 >"$root/power/ac/online"
+request_launcher repair --allow-battery >/dev/null
+export FAKE_PRECHECK_BATTERY_DROP=1
+"$RUNNER" boot >/dev/null
+expect_outcome power-required "battery dropped during precheck"
+grep -q '^fsck -n -v' "$root/events" || fail "precheck did not run"
+! grep -q '^fsck -a' "$root/events" || fail "repair ran after battery dropped"
 
 # Both held cards get independent results; normal cards get no offline scan.
 reset_fixture
