@@ -252,7 +252,9 @@ wait
                 (self.root / "umrk-wifi-resume-watch.pid").write_text(f"{watcher}\n")
                 (self.root / "umrk-wifi-link-watch.pid").write_text("104\n")
                 (self.root / "events").unlink(missing_ok=True)
-                self.run_shell(stubs + "\n" + session_function("stop_wifi_workers")
+                self.run_shell(stubs + "\n" + session_function("pid_running") + "\n"
+                               + session_function("stop_pid") + "\n"
+                               + session_function("stop_wifi_workers")
                                + "\n" + session_function(action) + f"\n{action}")
                 self.assertIn("kill 101", self.events())
                 self.assertIn("kill 104", self.events())

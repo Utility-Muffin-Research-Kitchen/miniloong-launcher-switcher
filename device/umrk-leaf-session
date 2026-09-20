@@ -26,6 +26,7 @@ EXIT_TO_STOCK_SENTINEL="${UMRK_EXIT_TO_STOCK_SENTINEL:-$TMPDIR/umrk-exit-to-stoc
 CRASH_WINDOW_SECONDS=120
 CRASH_THRESHOLD=3
 OWNED_POWER_PID="$TMPDIR/umrk-leaf-loong_power.pid"
+OWNED_PULSE_PID="$TMPDIR/umrk-leaf-pulseaudio.pid"
 OWNED_LIGHT_PID="$TMPDIR/umrk-leaf-loong_light.pid"
 AUDIO_SPK_KEEPER_PID="$TMPDIR/umrk-audio-spk-keeper.pid"
 BOOT_TRANSITION_PID="$TMPDIR/umrk-leaf-loong_transition.pid"
@@ -36,6 +37,7 @@ BOOT_STOCK_CFG="/loong/textures/boot.cfg.stock.umrk"
 # SD repair and recovery live on internal storage and the rootfs so they work
 # whatever state the cards are in.
 STORAGE_REPAIR="${UMRK_STORAGE_REPAIR:-/usr/bin/umrk-storage-repair}"
+POWER_TRANSITION=/usr/bin/umrk-power-transition
 STORAGE_RECOVERY_ASSETS="${UMRK_STORAGE_RECOVERY_ASSETS:-/usr/share/umrk/storage-recovery}"
 FALLBACK_LOG_DIR="${UMRK_FALLBACK_LOG_DIR:-/userdata/umrk/logs}"
 FALLBACK_LOG_MAX_BYTES=2097152
@@ -46,7 +48,9 @@ LOG_MAX_BYTES="${UMRK_LOG_MAX_BYTES:-8388608}"
 STORAGE_DISPLAY_PID="$TMPDIR/umrk-storage-display.pid"
 STORAGE_NOTICE_SECONDS="${UMRK_STORAGE_NOTICE_SECONDS:-900}"
 
-[ -f /etc/profile ] && . /etc/profile
+if [ "${1:-start}" != power-transition ]; then
+    [ -f /etc/profile ] && . /etc/profile
+fi
 
 log_msg() {
     log_dir="${LOG%/*}"
@@ -159,8 +163,39 @@ stop_storage_display() {
     pid="$(cat "$STORAGE_DISPLAY_PID" 2>/dev/null || true)"
     rm -f "$STORAGE_DISPLAY_PID" 2>/dev/null || true
     case "$pid" in *[!0-9]*|'') return 0 ;; esac
-    [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = loong_transition ] || return 0
-    kill "$pid" 2>/dev/null || true
+    stop_transition_pid "$pid"
+}
+
+# A zombie has already closed its files; only a live process can hold a card.
+pid_running() {
+    case "$(sed -n 's/^State:[[:space:]]*\(.\).*/\1/p' "/proc/$1/status" 2>/dev/null)" in
+        ''|Z) return 1 ;;
+    esac
+    return 0
+}
+
+# Poll for exit rather than sleeping a fixed time. Every stop runs inside the
+# power-button shutdown, which must finish before the PMIC's 6 s hold cut.
+# stop_pid PID POLLS: SIGTERM, wait up to POLLS x 50 ms, then SIGKILL.
+stop_pid() {
+    kill "$1" 2>/dev/null || return 0
+    polls=0
+    while pid_running "$1" && [ "$polls" -lt "$2" ]; do
+        sleep .05
+        polls=$((polls + 1))
+    done
+    if pid_running "$1"; then
+        kill -9 "$1" 2>/dev/null || true
+    fi
+    return 0
+}
+
+stop_transition_pid() {
+    # Linux comm truncates this 16-character name to loong_transitio. Match the
+    # executable instead, and wait for closure before remounting its log card.
+    [ "$(readlink "/proc/$1/exe" 2>/dev/null)" = /loong/loong_transition ] || return 0
+    stop_pid "$1" 4
+    wait "$1" 2>/dev/null || true
 }
 
 # A pending repair runs here, before any card content is read or executed.
@@ -171,11 +206,17 @@ run_storage_repair_boot() {
     boot_log="$FALLBACK_LOG_DIR/umrk-storage-repair-boot.log"
     if rootfs_env "$STORAGE_REPAIR" pending 2>/dev/null; then
         show_storage_display checking
-        rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1 || true
-        stop_storage_display
-    else
-        # Keeps cards held after a failed repair read-only for this boot.
-        rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1 || true
+    fi
+    rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1
+    repair_status=$?
+    stop_storage_display
+    if [ "$repair_status" -ne 0 ]; then
+        # A failed protection/result transaction cannot fall through to an
+        # SD writer or stock startup. Keep rootfs recovery and diagnostics.
+        show_storage_display failed
+        adb_is_pinned && start_usb_adb
+        printf 'SD check could not finish safely; see %s\n' "$boot_log" >/dev/console
+        while true; do sleep 5; done
     fi
 }
 
@@ -197,9 +238,7 @@ storage_recovery_notice() {
         waited=$((waited + 5))
     done
     log_msg "recovery notice timed out; powering off"
-    sync
-    poweroff 2>/dev/null || busybox poweroff 2>/dev/null || true
-    while true; do sleep 3600; done
+    finish_power_transition poweroff
 }
 
 mountpoint_is_mounted() {
@@ -590,6 +629,7 @@ start_pulseaudio_if_needed() {
             log_msg "starting pulseaudio"
             PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio >>"$LOG" 2>&1 &
         fi
+        echo "$!" >"$OWNED_PULSE_PID"
     else
         log_msg "pulseaudio missing"
     fi
@@ -613,14 +653,43 @@ start_owned_loong() {
     (
         cd /loong 2>/dev/null || exit 127
         export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
+        if [ "$name" = loong_power ] && [ -n "${UMRK_LOONG_POWER_HANDOFF_DIR:-}" ]; then
+            export PATH="$UMRK_LOONG_POWER_HANDOFF_DIR:$PATH"
+        fi
+        # exec keeps the pidfile on the daemon itself, so shutdown can stop it
+        # by PID instead of falling back to a slower name search.
         if [ -n "$cfg" ]; then
-            "./$name" "$cfg"
+            exec "./$name" "$cfg"
         else
-            "./$name"
+            exec "./$name"
         fi
     ) >>"$LOG" 2>&1 &
     echo "$!" >"$pidfile" 2>/dev/null || true
     return 0
+}
+
+# Stock loong_power's low-battery shutdown runs system("poweroff"). The BusyBox
+# applet only signals PID 1, which stays blocked in rcS while Leaf owns the
+# boot, so the device used to run on until the battery cut power with both
+# cards writable. Resolve its poweroff/reboot to jawakad's power handoff so
+# the normal cleanup and storage barrier run. If jawakad cannot be reached,
+# nothing else happens, as before. Jawaka restarts loong_power after a power
+# setting changes; it reads UMRK_LOONG_POWER_HANDOFF_DIR to keep this PATH.
+LOONG_POWER_HANDOFF_DIR="$TMPDIR/umrk-loong-power-bin"
+prepare_loong_power_handoff() {
+    ctl="${UMRK_BIN_PATH:-}/jawaka-platformctl"
+    sock="${JAWAKA_RUNTIME_DIR:-$RUNTIME_DIR}/jawakad.sock"
+    case "$ctl$sock" in *\"*|*\\*|*\$*|*\`*) return 1 ;; esac
+    [ -x "$ctl" ] || return 1
+    rm -rf "$LOONG_POWER_HANDOFF_DIR" && mkdir -p "$LOONG_POWER_HANDOFF_DIR" || return 1
+    cat >"$LOONG_POWER_HANDOFF_DIR/poweroff" <<EOF || return 1
+#!/bin/sh
+action="\${0##*/}"
+echo "loong_power requested \$action; handing it to jawakad"
+exec "$ctl" --socket "$sock" request "{\\"type\\":\\"platform-action\\",\\"action\\":\\"\$action\\",\\"value\\":0}"
+EOF
+    chmod 755 "$LOONG_POWER_HANDOFF_DIR/poweroff" &&
+        ln -sf poweroff "$LOONG_POWER_HANDOFF_DIR/reboot"
 }
 
 stop_owned_process() {
@@ -634,9 +703,7 @@ stop_owned_process() {
     comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
     [ "$comm" = "$name" ] || return 0
     log_msg "stopping leaf-owned $name pid=$pid"
-    kill "$pid" 2>/dev/null || true
-    sleep .3
-    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+    stop_pid "$pid" 6
 }
 
 stop_remaining_processes_by_name() {
@@ -645,7 +712,11 @@ stop_remaining_processes_by_name() {
     [ -n "$pids" ] || return 0
     log_msg "stopping remaining $name pids=$pids"
     kill $pids 2>/dev/null || true
-    sleep .3
+    polls=0
+    while [ "$polls" -lt 6 ] && pidof "$name" >/dev/null 2>&1; do
+        sleep .05
+        polls=$((polls + 1))
+    done
     pids="$(pidof "$name" 2>/dev/null || true)"
     [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
 }
@@ -664,9 +735,7 @@ stop_audio_spk_keeper() {
     case "$pid" in *[!0-9]*|'') return 0 ;; esac
     [ -d "/proc/$pid" ] || return 0
     log_msg "stopping audio speaker keeper pid=$pid"
-    kill "$pid" 2>/dev/null || true
-    sleep .2
-    [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
+    stop_pid "$pid" 4
 }
 
 stop_wifi_workers() {
@@ -684,9 +753,7 @@ stop_wifi_workers() {
             *"/00-wifi-dhcpv4.sh
 --$wifi_worker")
                 log_msg "stopping Wi-Fi $wifi_worker pid=$wifi_pid"
-                kill "$wifi_pid" 2>/dev/null || true
-                sleep .2
-                [ -d "/proc/$wifi_pid" ] && kill -9 "$wifi_pid" 2>/dev/null || true
+                stop_pid "$wifi_pid" 4
                 ;;
         esac
     done
@@ -1048,7 +1115,7 @@ start_boot_transition() {
         cd /loong 2>/dev/null || exit 127
         export LD_LIBRARY_PATH="./:${LD_LIBRARY_PATH:-}"
         export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
-        ./loong_transition "$param"
+        exec ./loong_transition "$param"
     ) >>"$LOG" 2>&1 &
     echo "$!" >"$BOOT_TRANSITION_PID" 2>/dev/null || true
 }
@@ -1057,17 +1124,13 @@ stop_boot_transition() {
     pid="$(cat "$BOOT_TRANSITION_PID" 2>/dev/null || true)"
     rm -f "$BOOT_TRANSITION_PID" 2>/dev/null || true
     case "$pid" in *[!0-9]*|'') pid="" ;; esac
-    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
-        log_msg "stopping leaf-owned loong_transition pid=$pid"
-        kill "$pid" 2>/dev/null || true
-        sleep .2
-        [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null || true
-        return 0
-    fi
+    [ -z "$pid" ] || stop_transition_pid "$pid"
+    # An older supervisor tracked the subshell, which could leave its animation
+    # orphaned. Also finish any remaining stock animation before shutdown.
     pids="$(pidof loong_transition 2>/dev/null || true)"
     [ -n "$pids" ] && {
         log_msg "stopping remaining loong_transition pids=$pids"
-        kill $pids 2>/dev/null || true
+        for pid in $pids; do stop_transition_pid "$pid"; done
     }
 }
 
@@ -1105,6 +1168,76 @@ restore_stock_rumble() {
         log_msg "best-effort rumble restore: duty_cycle write failed"
     printf '%s' 0 >"$pwm/enable" 2>>"$LOG" ||
         log_msg "best-effort rumble restore: enable write failed"
+}
+
+# Recording conversion is intentionally detached from jawakad. Wait for the
+# existing Leaf helper to finish; killing an arbitrary process with an SD fd
+# would destroy work owned by apps we do not supervise.
+recording_converters_running() {
+    for candidate in $(pgrep -f leaf-record-convert.sh 2>/dev/null); do
+        if tr '\0' '\n' <"/proc/$candidate/cmdline" 2>/dev/null |
+            grep -q '/.system/leaf/platforms/mlp1/bin/leaf-record-convert.sh$'; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Show the notice only when there is something to wait for; starting and
+# killing the animation otherwise costs ~0.5 s of the power-button budget.
+wait_recording_converters() {
+    recording_converters_running || return 0
+    show_storage_display power
+    while recording_converters_running; do
+        sleep 1
+    done
+    stop_storage_display
+}
+
+# This is terminal for the session, including on failure. Keep the request
+# intact and never enter crash recovery, respawn or stock startup. An operator
+# can retry via ADB after resolving the writer: touch /run/umrk-power-retry.
+finish_power_transition() {
+    power_action="$1"
+    # The clean-exit sentinel is tmpfs and disappears at reboot. Retire the
+    # durable crash counter now, or three quick intentional reboots disable
+    # Leaf on the next boot. The final barrier makes this removal durable.
+    rm -f "$CRASH_STATE" 2>/dev/null || true
+    stop_boot_transition
+    stop_storage_display
+    stop_audio_spk_keeper
+    stop_wifi_workers
+    stop_leaf_owned_loong
+    stop_owned_process pulseaudio "$OWNED_PULSE_PID"
+    # The daemon has already waited for its game/finalizers and service groups.
+    # A surviving writer makes the normal remount fail; never mask it with
+    # emergency remount, lazy unmount or a force-power deadline.
+    cd / || exit 1
+    LOG=/run/umrk-power-transition.log
+    exec </dev/null >>"$LOG" 2>&1
+    unset LD_LIBRARY_PATH LD_PRELOAD
+    export PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/
+    wait_recording_converters
+    # Installing an update can unlink this running script. Even a read-only
+    # descriptor to an unlinked inode blocks ext4's read-only remount. Exec the
+    # installed supervisor to close that descriptor before the final barrier.
+    exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C \
+        /usr/bin/umrk-leaf-session power-transition "$power_action"
+}
+
+run_power_transition() {
+    case "${1:-}" in reboot|poweroff) power_action="$1" ;; *) exit 2 ;; esac
+    cd / || exit 1
+    LOG=/run/umrk-power-transition.log
+    exec </dev/null >>"$LOG" 2>&1
+    while true; do
+        rootfs_env "$POWER_TRANSITION" "$power_action"
+        echo "Shutdown stopped safely. Resolve the failure, then touch /run/umrk-power-retry."
+        show_storage_display power-failed
+        while [ ! -f /run/umrk-power-retry ]; do sleep 1; done
+        rm -f /run/umrk-power-retry
+        stop_storage_display
+    done
 }
 
 pass_to_stock() {
@@ -1233,6 +1366,11 @@ leaf_start() {
 
     export_leaf_env
     start_pulseaudio_if_needed
+    if prepare_loong_power_handoff; then
+        export UMRK_LOONG_POWER_HANDOFF_DIR="$LOONG_POWER_HANDOFF_DIR"
+    else
+        log_msg "loong_power low-battery handoff unavailable"
+    fi
     start_owned_loong loong_power /oem/loong/record/config/loong_power.cfg "$OWNED_POWER_PID"
     log_msg "skipping loong_light; Jawaka owns LED ring in Leaf mode"
     run_platform_hooks
@@ -1261,9 +1399,33 @@ leaf_start() {
         fi
         ensure_usable_log
 
+        # A fresh private tmpfs directory is the capability and generation.
+        # Old requests cannot affect a newly started daemon.
+        UMRK_POWER_REQUEST_DIR="$(mktemp -d /run/umrk-power.XXXXXX)" || return 1
+        chmod 700 "$UMRK_POWER_REQUEST_DIR" || return 1
+        if [ -x "$POWER_TRANSITION" ]; then
+            printf '1\n' >"$UMRK_POWER_REQUEST_DIR/ready"
+        fi
+        export UMRK_POWER_REQUEST_DIR
         log_msg "starting Leaf launcher: $BUNDLE_BIN"
         "$BUNDLE_BIN" >>"$LOG" 2>&1
         status=$?
+        # Wait for actual process exit, not the earlier clean-exit marker.
+        power_action="$(cat "$UMRK_POWER_REQUEST_DIR/request" 2>/dev/null)"
+        case "$power_action" in
+            reboot|poweroff)
+                if [ "$status" -eq 0 ] && [ -f "$UMRK_POWER_REQUEST_DIR/complete" ]; then
+                    finish_power_transition "$power_action"
+                fi
+                cd /
+                LOG=/run/umrk-power-transition.log
+                log_msg "daemon did not complete shutdown; power request retained at $UMRK_POWER_REQUEST_DIR"
+                show_storage_display power-failed
+                while true; do sleep 5; done
+                ;;
+        esac
+        rm -rf "$UMRK_POWER_REQUEST_DIR"
+        unset UMRK_POWER_REQUEST_DIR
         log_msg "Leaf launcher exited status=$status"
         recover_leaf_daemon_crash
 
@@ -1280,6 +1442,7 @@ leaf_start() {
 case "${1:-start}" in
     start|"") leaf_start; exit 0 ;;
     stop) leaf_stop ;;
+    power-transition) run_power_transition "${2:-}" ;;
     *)
         echo "Usage: $0 {start|stop}" >&2
         exit 3

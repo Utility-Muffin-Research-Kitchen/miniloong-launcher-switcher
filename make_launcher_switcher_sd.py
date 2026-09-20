@@ -45,12 +45,27 @@ PROMOTED_PLATFORM_DIRS = (
 )
 PROMOTED_PLATFORM_FILES = ("manifest.json",)
 COMPLETION_SLEEP = "while true; do sleep 3600; done"
+# Stock loong_daemon runs otaCommand behind a pipe and, once that pipe closes,
+# kills what the command left running and returns to the stock UI. Keep the
+# pipe open on fd 3 until the kernel power call. Stock services also keep
+# internal files open for writing (loong_service holds /oem/loong/loong.db), so
+# stop the stock stack first, as its own S50loong halt does, and only then run
+# the storage barrier. A failed barrier never falls back to a forced reboot; it
+# retries, and a user can still power off after the flush it already completed.
+COMPLETION_STOCK_STACK = (
+    "loong_pangu loong_service loong_storage loong_input loong_light "
+    "loong_power loong_daemon"
+)
 COMPLETION_REBOOT = (
-    "reboot -f 2>/dev/null || "
-    "busybox reboot -f 2>/dev/null || "
-    "/sbin/reboot -f 2>/dev/null || "
-    "reboot 2>/dev/null || "
-    "while true; do sleep 3600; done"
+    "cd / && exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C "
+    "/bin/sh -c '"
+    f"stock=\"{COMPLETION_STOCK_STACK}\"; "
+    "killall $stock 2>/dev/null; n=0; "
+    "while [ $n -lt 40 ] && pidof $stock >/dev/null; do sleep .05; n=$((n+1)); done; "
+    "killall -9 $stock 2>/dev/null; n=0; "
+    "while [ $n -lt 40 ] && pidof $stock >/dev/null; do sleep .05; n=$((n+1)); done; "
+    "while true; do /usr/bin/umrk-power-transition reboot; sleep 5; done"
+    "' 3>&1 </dev/null >>/run/umrk-power-transition.log 2>&1"
 )
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -58,6 +73,7 @@ HOOK_PATH = ROOT_DIR / "device" / "S50leaf"
 SESSION_PATH = ROOT_DIR / "device" / "umrk-leaf-session"
 UNINSTALLER_PATH = ROOT_DIR / "device" / "umrk-launcher-switcher-uninstall.sh"
 MOUNT_STUBS_PATH = ROOT_DIR / "device" / "umrk-mount-stubs"
+POWER_TRANSITION_PATH = ROOT_DIR / "device" / "umrk-power-transition"
 STORAGE_REPAIR_PATH = ROOT_DIR / "device" / "umrk-storage-repair"
 STORAGE_HOLD_RULE_PATH = ROOT_DIR / "device" / "95-umrk-storage-hold.rules"
 
@@ -197,6 +213,7 @@ def build_installer_script(require_adb_pinned: bool = True) -> str:
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
     mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
     storage_repair = read_required(STORAGE_REPAIR_PATH).rstrip()
+    power_transition = read_required(POWER_TRANSITION_PATH).rstrip()
     storage_hold_rule = read_required(STORAGE_HOLD_RULE_PATH).rstrip()
     adb_preflight = (
         "assert_adb_pinned"
@@ -228,6 +245,8 @@ MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
 STORAGE_REPAIR=/usr/bin/umrk-storage-repair
 STORAGE_REPAIR_TMP=/tmp/umrk-storage-repair.$$
+POWER_TRANSITION=/usr/bin/umrk-power-transition
+POWER_TRANSITION_TMP=/tmp/umrk-power-transition.$$
 STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
 STORAGE_HOLD_RULE_TMP=/tmp/95-umrk-storage-hold.rules.$$
 STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
@@ -342,16 +361,21 @@ cat > "$STORAGE_REPAIR_TMP" <<'UMRK_STORAGE_REPAIR_EOF'
 __STORAGE_REPAIR__
 UMRK_STORAGE_REPAIR_EOF
 
+cat > "$POWER_TRANSITION_TMP" <<'UMRK_POWER_TRANSITION_EOF'
+__POWER_TRANSITION__
+UMRK_POWER_TRANSITION_EOF
+
 cat > "$STORAGE_HOLD_RULE_TMP" <<'UMRK_STORAGE_HOLD_RULE_EOF'
 __STORAGE_HOLD_RULE__
 UMRK_STORAGE_HOLD_RULE_EOF
 
-chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" || fail "failed to chmod install files"
+chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" "$POWER_TRANSITION_TMP" || fail "failed to chmod install files"
 mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
 mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
 mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
 mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
 mv "$STORAGE_REPAIR_TMP" "$STORAGE_REPAIR" || fail "failed to install SD repair runner"
+mv "$POWER_TRANSITION_TMP" "$POWER_TRANSITION" || fail "failed to install power barrier"
 mkdir -p "${STORAGE_HOLD_RULE%/*}" && mv "$STORAGE_HOLD_RULE_TMP" "$STORAGE_HOLD_RULE" ||
     fail "failed to install SD repair mount hold rule"
 chmod 644 "$STORAGE_HOLD_RULE" 2>/dev/null || true
@@ -362,7 +386,7 @@ if [ -d "$PLATFORM_ROOT/storage-recovery" ]; then
         rm -rf "$STORAGE_RECOVERY_ASSETS" && mv "$STORAGE_RECOVERY_ASSETS.new" "$STORAGE_RECOVERY_ASSETS" ||
         log_msg "SD repair screens not installed; repair runs without them"
 fi
-chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" 2>/dev/null || true
+chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" "$POWER_TRANSITION" 2>/dev/null || true
 "$MOUNT_STUBS" lock || fail "failed to protect rootfs mount stubs"
 touch "$INTERNAL_DATA/umrk_launcher_switcher_installed" 2>/dev/null || true
 sync
@@ -379,6 +403,7 @@ echo "installed launcher switcher init hook"
         .replace("__UNINSTALLER__", uninstaller)
         .replace("__MOUNT_STUBS__", mount_stubs)
         .replace("__STORAGE_REPAIR__", storage_repair)
+        .replace("__POWER_TRANSITION__", power_transition)
         .replace("__STORAGE_HOLD_RULE__", storage_hold_rule)
     )
 
@@ -415,6 +440,7 @@ def build_managed_installer_script(
     uninstaller = read_required(UNINSTALLER_PATH).rstrip()
     mount_stubs = read_required(MOUNT_STUBS_PATH).rstrip()
     storage_repair = read_required(STORAGE_REPAIR_PATH).rstrip()
+    power_transition = read_required(POWER_TRANSITION_PATH).rstrip()
     storage_hold_rule = read_required(STORAGE_HOLD_RULE_PATH).rstrip()
     template = """#!/bin/sh
 set -u
@@ -478,6 +504,8 @@ MOUNT_STUBS=/usr/bin/umrk-mount-stubs
 MOUNT_STUBS_TMP=/tmp/umrk-mount-stubs.$$
 STORAGE_REPAIR=/usr/bin/umrk-storage-repair
 STORAGE_REPAIR_TMP=/tmp/umrk-storage-repair.$$
+POWER_TRANSITION=/usr/bin/umrk-power-transition
+POWER_TRANSITION_TMP=/tmp/umrk-power-transition.$$
 STORAGE_HOLD_RULE=/etc/udev/rules.d/95-umrk-storage-hold.rules
 STORAGE_HOLD_RULE_TMP=/tmp/95-umrk-storage-hold.rules.$$
 STORAGE_RECOVERY_ASSETS=/usr/share/umrk/storage-recovery
@@ -705,20 +733,25 @@ UMRK_MOUNT_STUBS_EOF
 __STORAGE_REPAIR__
 UMRK_STORAGE_REPAIR_EOF
 
+cat > "$POWER_TRANSITION_TMP" <<'UMRK_POWER_TRANSITION_EOF'
+__POWER_TRANSITION__
+UMRK_POWER_TRANSITION_EOF
+
     cat > "$STORAGE_HOLD_RULE_TMP" <<'UMRK_STORAGE_HOLD_RULE_EOF'
 __STORAGE_HOLD_RULE__
 UMRK_STORAGE_HOLD_RULE_EOF
 
-    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" || fail "failed to chmod install files"
+    chmod 755 "$HOOK_TMP" "$SESSION_TMP" "$UNINSTALL_TMP" "$MOUNT_STUBS_TMP" "$STORAGE_REPAIR_TMP" "$POWER_TRANSITION_TMP" || fail "failed to chmod install files"
     mv "$HOOK_TMP" "$HOOK" || fail "failed to install init hook"
     mv "$SESSION_TMP" "$SESSION" || fail "failed to install Leaf session"
     mv "$UNINSTALL_TMP" "$UNINSTALL" || fail "failed to install uninstaller"
     mv "$MOUNT_STUBS_TMP" "$MOUNT_STUBS" || fail "failed to install mount-stub helper"
     mv "$STORAGE_REPAIR_TMP" "$STORAGE_REPAIR" || fail "failed to install SD repair runner"
+mv "$POWER_TRANSITION_TMP" "$POWER_TRANSITION" || fail "failed to install power barrier"
     mkdir -p "${STORAGE_HOLD_RULE%/*}" && mv "$STORAGE_HOLD_RULE_TMP" "$STORAGE_HOLD_RULE" ||
         fail "failed to install SD repair mount hold rule"
     chmod 644 "$STORAGE_HOLD_RULE" 2>/dev/null || true
-    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" 2>/dev/null || true
+    chmod 755 "$HOOK" "$SESSION" "$UNINSTALL" "$MOUNT_STUBS" "$STORAGE_REPAIR" "$POWER_TRANSITION" 2>/dev/null || true
 }
 
 # The repair screens are shown before any card content is readable, so they
@@ -911,6 +944,7 @@ echo "managed Leaf install complete"
         .replace("__UNINSTALLER__", uninstaller)
         .replace("__MOUNT_STUBS__", mount_stubs)
         .replace("__STORAGE_REPAIR__", storage_repair)
+        .replace("__POWER_TRANSITION__", power_transition)
         .replace("__STORAGE_HOLD_RULE__", storage_hold_rule)
     )
 
@@ -942,6 +976,13 @@ remount_root_rw() {
     mount -o remount,rw /dev/root / 2>>"$LOG"
 }
 
+# Recovery removes the installed helper. Keep this release's power barrier in
+# tmpfs so its completion command still closes filesystems after uninstall.
+cat >/run/umrk-recovery-power-transition <<'UMRK_RECOVERY_POWER_EOF'
+__POWER_TRANSITION__
+UMRK_RECOVERY_POWER_EOF
+chmod 755 /run/umrk-recovery-power-transition || exit 1
+
 log_msg "Leaf recovery starting"
 mv "$SDCARD_PATH/loong_upgrade" "$SDCARD_PATH/loong_upgrade.used" 2>/dev/null || true
 rm -f "$MARKER" 2>/dev/null || true
@@ -959,7 +1000,8 @@ sync
 log_msg "Leaf recovery complete"
 echo "Leaf recovery complete"
 """
-    return template.replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+    return (template.replace("__MLP1_SDCARD_PATH__", MLP1_SDCARD_PATH)
+            .replace("__POWER_TRANSITION__", read_required(POWER_TRANSITION_PATH).rstrip()))
 
 
 def install_command(completion_action: str = "sleep") -> str:
@@ -988,7 +1030,8 @@ def install_command(completion_action: str = "sleep") -> str:
 
 
 def recovery_command(completion_action: str = "sleep") -> str:
-    completion = completion_command(completion_action)
+    completion = completion_command(completion_action).replace(
+        "/usr/bin/umrk-power-transition", "/run/umrk-recovery-power-transition")
     return (
         f"SDCARD_PATH={MLP1_SDCARD_PATH}; "
         "PLATFORM=${PLATFORM:-mlp1}; "
