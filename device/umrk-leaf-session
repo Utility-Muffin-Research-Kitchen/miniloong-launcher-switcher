@@ -692,9 +692,11 @@ EOF
         ln -sf poweroff "$LOONG_POWER_HANDOFF_DIR/reboot"
 }
 
+# stop_owned_process NAME PIDFILE [POLLS]: POLLS x 50 ms grace before SIGKILL.
 stop_owned_process() {
     name="$1"
     pidfile="$2"
+    polls="${3:-6}"
     [ -f "$pidfile" ] || return 0
     pid="$(cat "$pidfile" 2>/dev/null || true)"
     rm -f "$pidfile" 2>/dev/null || true
@@ -703,7 +705,7 @@ stop_owned_process() {
     comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
     [ "$comm" = "$name" ] || return 0
     log_msg "stopping leaf-owned $name pid=$pid"
-    stop_pid "$pid" 6
+    stop_pid "$pid" "$polls"
 }
 
 stop_remaining_processes_by_name() {
@@ -1246,6 +1248,11 @@ pass_to_stock() {
     stop_boot_transition
     restore_stock_boot_animation || true
     stop_audio_spk_keeper
+    # Stock S50pulseaudio runs after this hook returns and starts its own
+    # daemon unconditionally; that one fails while Leaf's is alive, which would
+    # leave Leaf's config and its SD session-log descriptors in the stock
+    # session. Nothing waits on this path, so allow up to 2 s to save state.
+    stop_owned_process pulseaudio "$OWNED_PULSE_PID" 40
     stop_wifi_workers
     kill_stale_custom_launcher
     stop_leaf_owned_loong
