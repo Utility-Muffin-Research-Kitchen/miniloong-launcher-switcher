@@ -13,7 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
-        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test wifi-resume-test \
+        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test shutdown-pause-test wifi-resume-test \
         bundled-themes-test boot-animation-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
@@ -61,6 +61,10 @@ power-transition-test:
 stock-handoff-test:
 	@sh -n device/umrk-leaf-session
 	@python3 tests/test_stock_handoff.py
+
+shutdown-pause-test:
+	@sh -n device/umrk-leaf-session
+	@python3 tests/test_shutdown_pause.py
 
 boot-animation-test:
 	@sh -n device/umrk-launcher-switcher-uninstall.sh device/umrk-leaf-session

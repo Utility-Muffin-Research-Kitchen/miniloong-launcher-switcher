@@ -518,4 +518,42 @@ export FAKE_PRECHECK_RC=0
 expect_outcome clean "fresh repair already clean"
 ! grep -q '^fsck -a' "$root/events" || fail "already clean card modified"
 
+# ── Paused-shutdown pre-arm ─────────────────────────────────────────────────
+# A paused shutdown holds every card it could not prove closed, including one
+# whose identity is gone, and keeps an older hold exactly as it was.
+reset_fixture
+mkdir -p "$STATE/holds"
+printf 'state=failed\nrequest_id=older\n' >"$STATE/holds/22A4-0814"
+"$RUNNER" pre-arm paused-shutdown 22A4-0814 04B1-0820 5555-AAAA || fail "pre-arm refused"
+grep -qx 'request_id=older' "$STATE/holds/22A4-0814" || fail "pre-arm replaced an older hold"
+! grep -q '^trigger=' "$STATE/holds/22A4-0814" || fail "pre-arm relabelled an older hold"
+for card in 04B1-0820 5555-AAAA; do
+    grep -qx 'state=unverified' "$STATE/holds/$card" || fail "pre-arm state for $card"
+    grep -qx 'trigger=paused-shutdown' "$STATE/holds/$card" || fail "pre-arm trigger for $card"
+done
+[ -e "$UMRK_STORAGE_HOLD_FLAG" ] || fail "pre-arm did not set the rootfs hold flag"
+[ ! -e "$root/run/.mount.lock" ] || fail "pre-arm leaked the mount lock"
+[ "$("$RUNNER" gate-udev 04B1-0820)" = hold ] || fail "gate ignored a pre-armed card"
+if "$RUNNER" pre-arm '../x' 04B1-0820 2>/dev/null; then fail "pre-arm accepted a bad trigger"; fi
+if "$RUNNER" pre-arm paused-shutdown '../x' 2>/dev/null; then fail "pre-arm reported a bad UUID durable"; fi
+
+# The next boot checks a pre-armed card read-only, releases it when clean and
+# records why it was held.
+rm -f "$STATE/holds/22A4-0814" "$STATE/holds/5555-AAAA"
+"$RUNNER" boot >/dev/null
+expect_outcome clean "pre-armed card check"
+[ "$(summary_value trigger)" = paused-shutdown ] || fail "pre-arm trigger not in the result"
+[ "$(summary_value origin)" = automatic-check ] || fail "pre-armed check origin"
+[ ! -f "$STATE/holds/04B1-0820" ] || fail "clean pre-armed card kept its hold"
+grep -q '^fsck -n /dev/mmcblk3' "$root/events" || fail "pre-armed card not checked read-only"
+! grep -q '^fsck -a' "$root/events" || fail "pre-armed card was repaired automatically"
+
+# Without writable internal storage nothing is claimed durable.
+reset_fixture
+export FAKE_DF_FREE=100
+if "$RUNNER" pre-arm paused-shutdown 04B1-0820 2>/dev/null; then
+    fail "pre-arm claimed success without internal storage"
+fi
+unset FAKE_DF_FREE
+
 echo "storage repair fixtures: PASS"

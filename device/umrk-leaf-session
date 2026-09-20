@@ -685,8 +685,11 @@ prepare_loong_power_handoff() {
     cat >"$LOONG_POWER_HANDOFF_DIR/poweroff" <<EOF || return 1
 #!/bin/sh
 action="\${0##*/}"
+# Its poweroff is the low-battery shutdown; the reason only labels the pause.
+reason=menu
+[ "\$action" = poweroff ] && reason=low-battery
 echo "loong_power requested \$action; handing it to jawakad"
-exec "$ctl" --socket "$sock" request "{\\"type\\":\\"platform-action\\",\\"action\\":\\"\$action\\",\\"value\\":0}"
+exec "$ctl" --socket "$sock" request "{\\"type\\":\\"platform-action\\",\\"action\\":\\"\$action\\",\\"value\\":0,\\"reason\\":\\"\$reason\\"}"
 EOF
     chmod 755 "$LOONG_POWER_HANDOFF_DIR/poweroff" &&
         ln -sf poweroff "$LOONG_POWER_HANDOFF_DIR/reboot"
@@ -1185,22 +1188,344 @@ recording_converters_running() {
     return 1
 }
 
-# Show the notice only when there is something to wait for; starting and
-# killing the animation otherwise costs ~0.5 s of the power-button budget.
-wait_recording_converters() {
-    recording_converters_running || return 0
-    show_storage_display power
-    while recording_converters_running; do
-        sleep 1
+# ── Paused shutdown ─────────────────────────────────────────────────────────
+# A power transition can wait on an app that was not proven stopped (SVC-1),
+# a recording conversion, or storage that will not close. Each pause retries
+# by itself, a power-button tap retries now, and a 2 s hold overrides (app,
+# recording) or forces (storage) once the cards at risk are held for a
+# next-boot check. See umrk-workspace plans/Jawaka/shutdown-paused-retry-and-force.md.
+POWER_STATE_DIR="${UMRK_POWER_STATE_DIR:-/run}"
+POWER_CARDS="$POWER_STATE_DIR/umrk-power-cards"
+POWER_PREARM="$POWER_STATE_DIR/umrk-power-prearm"
+POWER_RETRY="$POWER_STATE_DIR/umrk-power-retry"
+POWER_UPTIME="${UMRK_POWER_UPTIME:-/proc/uptime}"
+POWER_MOUNTINFO="${UMRK_POWER_MOUNTINFO:-/proc/self/mountinfo}"
+POWER_BY_UUID="${UMRK_BY_UUID_DIR:-/dev/disk/by-uuid}"
+POWER_SUPPLY="${UMRK_POWER_SUPPLY_DIR:-/sys/class/power_supply}"
+POWER_PROC="${UMRK_POWER_PROC:-/proc}"
+POWER_HOLD_CS=200
+# Battery percentage at which a discharging, paused shutdown overrides or forces
+# by itself. Empty keeps the rule off until a measured discharge sets it.
+POWER_CRITICAL_CAPACITY="${UMRK_POWER_CRITICAL_CAPACITY:-}"
+POWER_SCREEN=""
+
+power_log() {
+    echo "umrk-leaf-session: $*"
+}
+
+power_uptime_cs() {
+    awk '{ printf "%d\n", $1 * 100 }' "$POWER_UPTIME" 2>/dev/null
+}
+
+# Screens are separate loong_transition processes; restart only on a change.
+show_power_screen() {
+    [ "$POWER_SCREEN" = "$1" ] && return 0
+    POWER_SCREEN="$1"
+    show_storage_display "$1"
+}
+
+# Record the mounted SD cards when shutdown begins. A card whose identity is
+# gone by the time a pause begins is still held from this list.
+power_snapshot_cards() {
+    [ -f "$POWER_CARDS" ] && return 0
+    : >"$POWER_CARDS.tmp" || return 1
+    for link in "$POWER_BY_UUID"/*; do
+        [ -e "$link" ] || continue
+        dev="$(readlink -f "$link" 2>/dev/null)"
+        # Internal eMMC is mmcblk0; SD slots are the other mmcblk devices.
+        case "${dev##*/}" in mmcblk0*|'') continue ;; mmcblk*) ;; *) continue ;; esac
+        awk -v dev="$dev" '{ for (i = 7; i <= NF; i++) if ($i == "-") {
+                if ($(i + 2) == dev) found = 1; break } }
+            END { exit found ? 0 : 1 }' "$POWER_MOUNTINFO" 2>/dev/null || continue
+        echo "${link##*/} $dev" >>"$POWER_CARDS.tmp"
     done
-    stop_storage_display
+    mv -f "$POWER_CARDS.tmp" "$POWER_CARDS"
+}
+
+# UUIDs from the snapshot that are not proven closed: gone, moved, or mounted
+# with a writable mount or superblock.
+power_unproven_cards() {
+    [ -f "$POWER_CARDS" ] || power_snapshot_cards
+    while read -r uuid dev; do
+        [ -n "$uuid" ] || continue
+        if [ "$(readlink -f "$POWER_BY_UUID/$uuid" 2>/dev/null)" != "$dev" ]; then
+            echo "$uuid"
+            continue
+        fi
+        awk -v dev="$dev" '{ for (i = 7; i <= NF; i++) if ($i == "-") {
+                if ($(i + 2) == dev && ($6 ~ /(^|,)rw(,|$)/ || $(i + 3) ~ /(^|,)rw(,|$)/))
+                    rw = 1
+                break } }
+            END { exit rw ? 0 : 1 }' "$POWER_MOUNTINFO" 2>/dev/null && echo "$uuid"
+    done <"$POWER_CARDS"
+}
+
+# Once per shutdown: hold every card at risk before override or force is offered.
+power_prearm() {
+    [ -f "$POWER_PREARM" ] && return 0
+    cards="$(power_unproven_cards | tr '\n' ' ')"
+    if [ -z "$cards" ]; then
+        echo ok >"$POWER_PREARM"
+    elif timeout 15 env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C \
+            "$STORAGE_REPAIR" pre-arm paused-shutdown $cards; then
+        echo ok >"$POWER_PREARM"
+    else
+        echo failed >"$POWER_PREARM"
+    fi
+    power_log "pause: next-boot check for [${cards% }]: $(cat "$POWER_PREARM")"
+    # Keep a copy that survives a forced power-off.
+    mkdir -p "$FALLBACK_LOG_DIR" 2>/dev/null &&
+        timeout 1 cp "$LOG" "$FALLBACK_LOG_DIR/umrk-power-transition.log" 2>/dev/null
+    return 0
+}
+
+power_prearmed() {
+    [ "$(cat "$POWER_PREARM" 2>/dev/null)" = ok ]
+}
+
+# A discharging battery at the configured cutoff: brownout is a worse forced
+# shutdown than a deliberate one, so a pause gives way by itself.
+battery_critical() {
+    [ -n "$POWER_CRITICAL_CAPACITY" ] || return 1
+    [ "$(cat "$POWER_SUPPLY/battery/status" 2>/dev/null)" = Discharging ] || return 1
+    capacity="$(cat "$POWER_SUPPLY/battery/capacity" 2>/dev/null)"
+    case "$capacity" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$capacity" -le "$POWER_CRITICAL_CAPACITY" ] || return 1
+    power_log "battery critical: ${capacity}% and discharging"
+}
+
+# Open the power key once on fd 5. Jawaka, which grabs it, has exited.
+power_key_open() {
+    [ -n "${POWER_KEY_OPEN:-}" ] && return 0
+    key="${UMRK_POWER_KEY_DEVICE:-}"
+    if [ -z "$key" ]; then
+        for event in /sys/class/input/event*; do
+            [ "$(cat "$event/device/name" 2>/dev/null)" = "rk805 pwrkey" ] || continue
+            key="/dev/input/${event##*/}"
+            break
+        done
+    fi
+    [ -n "$key" ] && [ -r "$key" ] || return 1
+    exec 5<"$key" || return 1
+    POWER_KEY_OPEN=1
+}
+
+# power_key_event WAIT_CS: one 24-byte input_event as "type code value", or
+# failure when nothing arrives in time.
+power_key_event() {
+    [ "$1" -gt 0 ] || return 1
+    words="$(timeout "$(($1 / 100)).$(($1 % 100 / 10))$(($1 % 10))" \
+        dd bs=24 count=1 <&5 2>/dev/null | od -An -v -tu2)"
+    set -- $words
+    [ "$#" -ge 11 ] || return 1
+    echo "$9 ${10} ${11}"
+}
+
+# power_prompt SECONDS HOLD: "tap", "hold PRESS_CS" or "timeout". With HOLD=1 a
+# press still down after POWER_HOLD_CS is a hold; with HOLD=0 a long press is a
+# tap on release. Only a press seen after the prompt started counts.
+power_prompt() {
+    if ! power_key_open; then
+        sleep "$1"
+        echo timeout
+        return 0
+    fi
+    started="$(power_uptime_cs)"
+    limit=$(($1 * 100))
+    pressed=""
+    while :; do
+        now="$(power_uptime_cs)"
+        if [ -n "$pressed" ]; then
+            if [ "$2" = 1 ]; then
+                wait_cs=$((pressed + POWER_HOLD_CS - now))
+                if [ "$wait_cs" -le 0 ]; then
+                    echo "hold $pressed"
+                    return 0
+                fi
+            else
+                wait_cs=500
+            fi
+        else
+            wait_cs=$((started + limit - now))
+            if [ "$wait_cs" -le 0 ]; then
+                echo timeout
+                return 0
+            fi
+        fi
+        event="$(power_key_event "$wait_cs")" || continue
+        case "$event" in
+            "1 116 1") [ -n "$pressed" ] || pressed="$(power_uptime_cs)" ;;
+            "1 116 0") if [ -n "$pressed" ]; then echo tap; return 0; fi ;;
+        esac
+    done
+}
+
+# What the daemon could not prove stopped: 0 all gone, 1 something remains,
+# 2 cannot be checked (no record, unknown line). Nothing here signals anything.
+power_incomplete_state() {
+    record="$1/incomplete"
+    [ -f "$record" ] || return 2
+    head -n 1 "$record" | grep -q '^reason=' || return 2
+    remaining=0
+    items=0
+    while read -r line; do
+        case "$line" in
+            reason=*) continue ;;
+            service=*)
+                items=$((items + 1))
+                pgid="${line#* pgid=}"; pgid="${pgid%% *}"
+                lease="${line#* lease=}"
+                case "$pgid" in ''|*[!0-9]*) return 2 ;; esac
+                if [ -f "$lease" ]; then
+                    # A group member keeps the generation lease locked.
+                    flock -n "$lease" true 2>/dev/null || remaining=1
+                elif [ "$pgid" -gt 0 ]; then
+                    awk -v g="$pgid" '{ sub(/^.*\) /, ""); if ($3 == g && $1 != "Z") found = 1 }
+                        END { exit found ? 0 : 1 }' "$POWER_PROC"/[0-9]*/stat 2>/dev/null && remaining=1
+                else
+                    return 2
+                fi
+                ;;
+            game\ pid=*)
+                items=$((items + 1))
+                pid="${line#game pid=}"; pid="${pid%% *}"
+                start="${line#* start=}"
+                case "$pid$start" in ''|*[!0-9]*) return 2 ;; esac
+                stat="$(cat "$POWER_PROC/$pid/stat" 2>/dev/null)" || continue
+                stat="${stat##*) }"
+                set -- $stat
+                [ "$1" = Z ] && continue
+                [ "$start" = 0 ] || [ "${20}" = "$start" ] || continue
+                remaining=1
+                ;;
+            *) return 2 ;;
+        esac
+    done <"$record"
+    [ "$items" -gt 0 ] || return 2
+    return "$remaining"
+}
+
+# App cause. Continue when every recorded item is gone; a hold overrides.
+pause_app() {
+    power_prearm
+    power_log "pause: shutdown could not prove every app stopped: $(tr '\n' ' ' <"$1/incomplete" 2>/dev/null)"
+    while :; do
+        power_incomplete_state "$1"
+        case $? in
+            0) power_log "pause: every recorded app is gone; continuing"; return 0 ;;
+        esac
+        if battery_critical; then
+            power_log "pause: overriding the app pause for the battery"
+            return 0
+        fi
+        if power_prearmed; then
+            show_power_screen paused-app
+            answer="$(power_prompt 2 1)"
+        else
+            show_power_screen paused-no-force
+            answer="$(power_prompt 2 0)"
+        fi
+        case "$answer" in
+            hold*)
+                power_prearmed || continue
+                power_log "pause: user override past an unverified stop"
+                return 0
+                ;;
+        esac
+    done
+}
+
+stop_recording_converters() {
+    for candidate in $(pgrep -f leaf-record-convert.sh 2>/dev/null); do
+        tr '\0' '\n' <"/proc/$candidate/cmdline" 2>/dev/null |
+            grep -q '/.system/leaf/platforms/mlp1/bin/leaf-record-convert.sh$' || continue
+        power_log "pause: stopping recording conversion pid=$candidate"
+        stop_pid "$candidate" 20
+    done
+}
+
+# Recording cause. Continue when the conversion ends; a hold stops it.
+pause_recording() {
+    recording_converters_running || return 0
+    power_prearm
+    power_log "pause: waiting for a recording conversion"
+    while recording_converters_running; do
+        if battery_critical; then
+            stop_recording_converters
+            break
+        fi
+        if power_prearmed; then
+            show_power_screen paused-recording
+            answer="$(power_prompt 1 1)"
+        else
+            show_power_screen paused-no-force
+            answer="$(power_prompt 1 0)"
+        fi
+        case "$answer" in
+            hold*)
+                power_prearmed || continue
+                power_log "pause: user stopped the recording conversion"
+                stop_recording_converters
+                ;;
+        esac
+    done
+    return 0
+}
+
+# Storage cause, after a failed barrier. Returns to retry the barrier; a hold
+# after a failed retry, or the battery rule, forces instead and never returns.
+pause_storage() {
+    action="$1"
+    retry_failed="$2"
+    power_prearm
+    if battery_critical; then
+        show_power_screen forcing
+        force_power_transition "$action" "$(power_uptime_cs)"
+    fi
+    offer_force=0
+    if [ "$retry_failed" = 1 ] && power_prearmed; then
+        offer_force=1
+        show_power_screen paused-storage-force
+    else
+        show_power_screen paused-storage
+    fi
+    # Automatic retry after 10 s; check the ADB marker every 2 s meanwhile.
+    for _ in 1 2 3 4 5; do
+        if [ -f "$POWER_RETRY" ]; then
+            rm -f "$POWER_RETRY"
+            power_log "pause: ADB retry"
+            return 0
+        fi
+        answer="$(power_prompt 2 "$offer_force")"
+        case "$answer" in
+            tap) power_log "pause: user retry"; return 0 ;;
+            hold*)
+                # Force exists only once it was offered.
+                [ "$offer_force" = 1 ] || continue
+                show_power_screen forcing
+                force_power_transition "$action" "${answer#hold }"
+                ;;
+        esac
+    done
+    power_log "pause: automatic retry"
+}
+
+force_power_transition() {
+    power_log "pause: forcing $1"
+    exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C \
+        "$POWER_TRANSITION" force "$1" "$2"
 }
 
 # This is terminal for the session, including on failure. Keep the request
-# intact and never enter crash recovery, respawn or stock startup. An operator
-# can retry via ADB after resolving the writer: touch /run/umrk-power-retry.
+# intact and never enter crash recovery, respawn or stock startup. A failure
+# pauses (see above); an operator can also retry via ADB after resolving the
+# writer: touch /run/umrk-power-retry.
 finish_power_transition() {
-    power_action="$1"
+    power_stop_workers
+    power_close_storage "$1"
+}
+
+power_stop_workers() {
     # The clean-exit sentinel is tmpfs and disappears at reboot. Retire the
     # durable crash counter now, or three quick intentional reboots disable
     # Leaf on the next boot. The final barrier makes this removal durable.
@@ -1219,12 +1544,16 @@ finish_power_transition() {
     exec </dev/null >>"$LOG" 2>&1
     unset LD_LIBRARY_PATH LD_PRELOAD
     export PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/
-    wait_recording_converters
+}
+
+power_close_storage() {
+    pause_recording
+    [ -z "$POWER_SCREEN" ] || stop_storage_display
     # Installing an update can unlink this running script. Even a read-only
     # descriptor to an unlinked inode blocks ext4's read-only remount. Exec the
     # installed supervisor to close that descriptor before the final barrier.
     exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C \
-        /usr/bin/umrk-leaf-session power-transition "$power_action"
+        /usr/bin/umrk-leaf-session power-transition "$1"
 }
 
 run_power_transition() {
@@ -1232,13 +1561,14 @@ run_power_transition() {
     cd / || exit 1
     LOG=/run/umrk-power-transition.log
     exec </dev/null >>"$LOG" 2>&1
+    attempts=0
     while true; do
         rootfs_env "$POWER_TRANSITION" "$power_action"
-        echo "Shutdown stopped safely. Resolve the failure, then touch /run/umrk-power-retry."
-        show_storage_display power-failed
-        while [ ! -f /run/umrk-power-retry ]; do sleep 1; done
-        rm -f /run/umrk-power-retry
-        stop_storage_display
+        power_log "shutdown paused: storage could not be closed"
+        retry_failed=0
+        [ "$attempts" -eq 0 ] || retry_failed=1
+        attempts=$((attempts + 1))
+        pause_storage "$power_action" "$retry_failed"
     done
 }
 
@@ -1421,14 +1751,16 @@ leaf_start() {
         power_action="$(cat "$UMRK_POWER_REQUEST_DIR/request" 2>/dev/null)"
         case "$power_action" in
             reboot|poweroff)
+                power_snapshot_cards
                 if [ "$status" -eq 0 ] && [ -f "$UMRK_POWER_REQUEST_DIR/complete" ]; then
                     finish_power_transition "$power_action"
                 fi
-                cd /
-                LOG=/run/umrk-power-transition.log
-                log_msg "daemon did not complete shutdown; power request retained at $UMRK_POWER_REQUEST_DIR"
-                show_storage_display power-failed
-                while true; do sleep 5; done
+                # SVC-1: the daemon could not prove every writer stopped, or
+                # exited abnormally. Pause for proof or an explicit override.
+                power_stop_workers
+                power_log "daemon did not complete shutdown (status=$status); request kept at $UMRK_POWER_REQUEST_DIR"
+                pause_app "$UMRK_POWER_REQUEST_DIR"
+                power_close_storage "$power_action"
                 ;;
         esac
         rm -rf "$UMRK_POWER_REQUEST_DIR"
