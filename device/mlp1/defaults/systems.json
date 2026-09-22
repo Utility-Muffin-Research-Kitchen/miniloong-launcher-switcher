@@ -233,6 +233,7 @@
       "default_core": "flycast_standalone",
       "alternate_cores": [
         "flycast",
+        "flycast_fast_umrk",
         "km_flycast_xtreme"
       ],
       "rom_root": "Roms/ATOMISWAVE",
@@ -313,6 +314,7 @@
       "default_core": "flycast_standalone",
       "alternate_cores": [
         "flycast",
+        "flycast_fast_umrk",
         "km_flycast_xtreme"
       ],
       "rom_root": "Roms/DC",
@@ -998,6 +1000,7 @@
       "default_core": "flycast_standalone",
       "alternate_cores": [
         "flycast",
+        "flycast_fast_umrk",
         "km_flycast_xtreme"
       ],
       "rom_root": "Roms/NAOMI",
