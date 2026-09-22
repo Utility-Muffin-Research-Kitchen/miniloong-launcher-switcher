@@ -16,7 +16,7 @@
 # its filesystem UUID, re-probed at every step; mount paths swap between boots.
 #
 # Subcommands:
-#   request --uuid U --source S --fs-type vfat --device /dev/X --mode repair|check
+#   request --uuid U --source S --fs-type vfat --device /dev/X --mode repair|check [--allow-battery]
 #   boot            run a pending request (from umrk-leaf-session, before Leaf)
 #   pending         exit 0 when a request is waiting
 #   has-failed-hold exit 0 when an inserted card is still held after boot, or
@@ -260,6 +260,14 @@ external_power_online() {
     return 1
 }
 
+repair_power_ok() {
+    external_power_online && return 0
+    [ "$1" = 1 ] || return 1
+    capacity="$(cat "$POWER_SUPPLY_DIR/battery/capacity" 2>/dev/null)"
+    case "$capacity" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$capacity" -ge 30 ] && [ "$capacity" -le 100 ]
+}
+
 # ── Requests ──────────────────────────────────────────────────────────────
 
 new_request_id() {
@@ -284,6 +292,7 @@ cmd_request() (
     fs_type=""
     device=""
     mode="repair"
+    allow_battery=0
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --uuid) uuid="${2:-}"; shift 2 ;;
@@ -291,18 +300,20 @@ cmd_request() (
             --fs-type) fs_type="${2:-}"; shift 2 ;;
             --device) device="${2:-}"; shift 2 ;;
             --mode) mode="${2:-}"; shift 2 ;;
+            --allow-battery) allow_battery=1; shift ;;
             *) die "invalid argument" ;;
         esac
     done
     uuid_is_valid "$uuid" || die "unknown-identity"
     case "$source" in launcher_sd|secondary_sd) ;; *) die "invalid source" ;; esac
     case "$mode" in repair|check) ;; *) die "invalid mode" ;; esac
+    [ "$mode" = repair ] || [ "$allow_battery" = 0 ] || die "invalid argument"
     case "$fs_type" in vfat|msdos) ;; exfat) die "exfat-not-validated" ;; *) die "unsupported-filesystem" ;; esac
     value_is_safe "$device" || die "not-found"
     [ -x "$FSCK_FAT" ] || die "tool-missing"
     internal_storage_ready || die "internal-storage-unavailable"
     [ -f "$REQUEST" ] && die "busy"
-    [ "$mode" != repair ] || external_power_online || die "power-required"
+    [ "$mode" != repair ] || repair_power_ok "$allow_battery" || die "power-required"
 
     resolved="$(resolve_uuid "$uuid")" || die "$resolved"
     [ "${resolved##*/}" = "${device##*/}" ] || die "not-found"
@@ -321,6 +332,7 @@ source=$source
 fs_type=$fs_type
 device=$resolved
 mode=$mode
+allow_battery=$allow_battery
 attempts=0
 EOF
     then
@@ -568,6 +580,8 @@ run_request() (
     uuid="$(kv_get "$REQUEST" uuid)"
     fs_type="$(kv_get "$REQUEST" fs_type)"
     mode="$(kv_get "$REQUEST" mode)"
+    allow_battery="$(kv_get "$REQUEST" allow_battery)" || allow_battery=0
+    case "$allow_battery" in 0|1) ;; *) allow_battery=0 ;; esac
     RESULT_ORIGIN="$(kv_get "$REQUEST" origin)"
     case "$RESULT_ORIGIN" in automatic-check) ;; *) RESULT_ORIGIN=user-request ;; esac
     RESULT_TRIGGER="$(kv_get "$REQUEST" trigger)" || RESULT_TRIGGER=
@@ -619,7 +633,7 @@ run_request() (
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" unsupported "" "" false "$changes" failed
         return $?
     fi
-    if [ "$mode" = repair ] && ! external_power_online; then
+    if [ "$mode" = repair ] && ! repair_power_ok "$allow_battery"; then
         finish "$id" "$uuid" "$device" "$fs_type" "$mode" power-required "" "" false "$changes" failed
         return $?
     fi
@@ -648,6 +662,7 @@ source=$(kv_get "$REQUEST" source)
 fs_type=$fs_type
 device=$device
 mode=$mode
+allow_battery=$allow_battery
 origin=$RESULT_ORIGIN
 attempts=1
 EOF
@@ -681,7 +696,7 @@ EOF
         repair_rc=0
     fi
     if [ "$mode" = repair ] && [ "$precheck_rc" != 0 ]; then
-        if ! external_power_online; then
+        if ! repair_power_ok "$allow_battery"; then
             finish "$id" "$uuid" "$device" "$fs_type" "$mode" power-required "" "$precheck_rc" false "$changes" failed
             return $?
         fi
