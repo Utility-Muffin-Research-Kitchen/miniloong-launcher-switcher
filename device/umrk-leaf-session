@@ -143,11 +143,28 @@ rootfs_env() {
     env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C "$@"
 }
 
+# The storage screens draw through Weston. The boot check starts right after
+# S49weston, before the compositor has made its socket, and a client started
+# then fails without a word: the whole check ran behind a black screen. Wait
+# for the socket, bounded, while Weston is running. When it is not running at
+# all there is nothing to wait for.
+wait_for_compositor() {
+    socket="${XDG_RUNTIME_DIR:-/var/run}/wayland-0"
+    polls=0
+    while [ ! -e "$socket" ] && [ "$polls" -lt "${1:-80}" ]; do
+        pgrep -x weston >/dev/null 2>&1 || return 1
+        sleep .1
+        polls=$((polls + 1))
+    done
+    [ -e "$socket" ]
+}
+
 show_storage_display() {
     screen="$1"
     [ -x /loong/loong_transition ] || return 0
     [ -f "$STORAGE_RECOVERY_ASSETS/$screen/0/0.png" ] || return 0
     stop_storage_display
+    wait_for_compositor 80 || true
     param="{\"dir\":\"$STORAGE_RECOVERY_ASSETS/$screen\",\"bg\":0,\"seques\":[{\"num\":1,\"interval\":1000,\"wait\":0,\"repeat\":-1}]}"
     (
         cd /loong 2>/dev/null || exit 127
@@ -204,9 +221,15 @@ run_storage_repair_boot() {
     [ -x "$STORAGE_REPAIR" ] || return 0
     mkdir -p "$FALLBACK_LOG_DIR" 2>/dev/null || true
     boot_log="$FALLBACK_LOG_DIR/umrk-storage-repair-boot.log"
-    if rootfs_env "$STORAGE_REPAIR" pending 2>/dev/null; then
-        show_storage_display checking
-    fi
+    # A repair gets its own screen: it can take several minutes and needs
+    # power. A runner without pending-mode prints nothing and falls back.
+    pending_mode="$(rootfs_env "$STORAGE_REPAIR" pending-mode 2>/dev/null)"
+    case "$pending_mode" in
+        repair) show_storage_display repairing ;;
+        check) show_storage_display checking ;;
+        *) rootfs_env "$STORAGE_REPAIR" pending 2>/dev/null &&
+               show_storage_display checking ;;
+    esac
     rootfs_env "$STORAGE_REPAIR" boot >>"$boot_log" 2>&1
     repair_status=$?
     stop_storage_display

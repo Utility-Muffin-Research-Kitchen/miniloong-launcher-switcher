@@ -74,6 +74,7 @@ storage-repair-test:
 	@sh -n device/umrk-storage-repair device/umrk-leaf-session device/umrk-launcher-switcher-uninstall.sh
 	@tools/storage-repair-fixtures.sh
 	@python3 tests/test_session_log_fallback.py
+	@python3 tests/test_storage_display.py
 
 mount-stub-test:
 	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
