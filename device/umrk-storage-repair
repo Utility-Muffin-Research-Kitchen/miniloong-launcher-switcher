@@ -913,19 +913,41 @@ cmd_uninstall_cleanup() {
     say "removed repair requests and holds; logs kept in $RESULTS_DIR"
 }
 
+# A held card that boot would give its automatic check: present, and not yet
+# checked in this kernel boot.
+held_check_pending() {
+    for pending_hold in "$HOLDS_DIR"/*; do
+        [ -f "$pending_hold" ] || continue
+        pending_uuid="${pending_hold##*/}"
+        uuid_is_valid "$pending_uuid" || continue
+        [ ! -d "$CHECKED_DIR/$pending_uuid" ] || continue
+        resolve_uuid "$pending_uuid" >/dev/null 2>&1 && return 0
+    done
+    return 1
+}
+
 case "${1:-}" in
     request) shift; cmd_request "$@" ;;
     boot) cmd_boot ;;
     pre-arm) shift; cmd_pre_arm "$@" ;;
     pending)
         [ ! -f "$REQUEST" ] || exit 0
-        for pending_hold in "$HOLDS_DIR"/*; do
-            [ -f "$pending_hold" ] || continue
-            pending_uuid="${pending_hold##*/}"
-            uuid_is_valid "$pending_uuid" || continue
-            [ ! -d "$CHECKED_DIR/$pending_uuid" ] || continue
-            resolve_uuid "$pending_uuid" >/dev/null 2>&1 && exit 0
-        done
+        held_check_pending && exit 0
+        exit 1
+        ;;
+    pending-mode)
+        # What "boot" would run now, for the screen shown while it runs:
+        # "repair" for an explicit repair request, "check" for an explicit
+        # check or a held card's automatic check. Exit 1 when nothing is
+        # pending. Read-only, like pending.
+        if [ -f "$REQUEST" ]; then
+            case "$(kv_get "$REQUEST" mode 2>/dev/null)" in
+                repair) echo repair ;;
+                *) echo check ;;
+            esac
+            exit 0
+        fi
+        held_check_pending && { echo check; exit 0; }
         exit 1
         ;;
     has-failed-hold)

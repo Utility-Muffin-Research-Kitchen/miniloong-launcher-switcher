@@ -227,6 +227,7 @@ grep -q busy "$root/err" || fail "second request reason"
 [ "$("$RUNNER" gate-udev 22A4-0814)" = hold ] || fail "gate did not hold the requested card"
 [ -z "$("$RUNNER" gate-udev 04B1-0820)" ] || fail "gate held an unrelated card"
 "$RUNNER" pending || fail "pending not reported"
+[ "$("$RUNNER" pending-mode)" = repair ] || fail "pending-mode missed the repair request"
 
 # ── Clean check ─────────────────────────────────────────────────────────────
 "$RUNNER" boot >/dev/null
@@ -462,6 +463,7 @@ unset FAKE_VERIFY_RC
 echo 0 >"$root/power/ac/online"
 : >"$root/events"
 "$RUNNER" pending || fail "automatic check not advertised"
+[ "$("$RUNNER" pending-mode)" = check ] || fail "pending-mode missed the automatic check"
 "$RUNNER" boot >/dev/null
 expect_outcome clean "PC repaired same UUID"
 [ "$(summary_value origin)" = automatic-check ] || fail "automatic origin missing"
@@ -597,5 +599,14 @@ if "$RUNNER" pre-arm paused-shutdown 04B1-0820 2>/dev/null; then
     fail "pre-arm claimed success without internal storage"
 fi
 unset FAKE_DF_FREE
+
+# pending-mode: an explicit check reports check, and nothing pending exits 1
+# with no output.
+reset_fixture
+request_launcher check >/dev/null
+[ "$("$RUNNER" pending-mode)" = check ] || fail "pending-mode missed the check request"
+reset_fixture
+if out="$("$RUNNER" pending-mode)"; then fail "pending-mode reported work on an idle card"; fi
+[ -z "$out" ] || fail "pending-mode printed on an idle card"
 
 echo "storage repair fixtures: PASS"
