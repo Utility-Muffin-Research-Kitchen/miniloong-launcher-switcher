@@ -840,7 +840,10 @@ leaf_stale_pids() {
     out="$(leaf_daemon_pids)"
     # jawakad by name as well: leaf_daemon_pids covers the deployed
     # loong_pangu, but a dev build can be staged under its real name.
-    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd retroarch PPSSPPSDL; do
+    # jawaka-ledd, the LED effects engine, outlives a killed daemon on Jawaka
+    # releases that did not tie it to its parent. Left running it keeps the
+    # session log on the card open, and the card cannot close at shutdown.
+    for name in jawakad jawaka-launcher jawaka-menu jawaka-osd jawaka-ledd retroarch PPSSPPSDL; do
         pids="$(pidof "$name" 2>/dev/null || true)"
         [ -n "$pids" ] && out="$out $pids"
     done
@@ -1574,6 +1577,11 @@ power_stop_workers() {
     stop_storage_display
     stop_audio_spk_keeper
     stop_wifi_workers
+    # A daemon that died without stopping its LED effects engine, here or in
+    # an earlier generation, left it holding the session log on the card. It
+    # only drives the LED ring, so stopping it loses nothing. First, so its
+    # exit thaws any loong_light it froze.
+    stop_remaining_processes_by_name jawaka-ledd
     stop_leaf_owned_loong
     stop_owned_process pulseaudio "$OWNED_PULSE_PID"
     # The daemon has already waited for its game/finalizers and service groups.
