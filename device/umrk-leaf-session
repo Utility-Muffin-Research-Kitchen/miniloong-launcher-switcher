@@ -143,6 +143,23 @@ rootfs_env() {
     env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/ LC_ALL=C "$@"
 }
 
+WESTON_INITD="${UMRK_WESTON_INITD:-/etc/init.d/S49weston}"
+HDMI_STATUS="${UMRK_HDMI_STATUS:-/sys/class/drm/card0-HDMI-A-1/status}"
+
+# weston_initd VERB [NAME=VALUE...]: Weston outlives every Leaf generation,
+# together with its clients and the S49weston log tee. Run the init script from
+# / with stdio off the card and without the launcher's loader variables: a card
+# LD_LIBRARY_PATH maps card libraries into all of them until the next boot, and
+# once a launcher update replaces those files the deleted inodes keep the card
+# from remounting read-only at shutdown. The WESTON_DRM_* panel-first settings
+# exported at boot are kept on purpose.
+weston_initd() {
+    verb="$1"
+    shift
+    (cd / && exec env -u LD_LIBRARY_PATH -u LD_PRELOAD "$@" "$WESTON_INITD" "$verb") \
+        </dev/null >/dev/null 2>&1
+}
+
 # The storage screens draw through Weston. The boot check starts right after
 # S49weston, before the compositor has made its socket, and a client started
 # then fails without a word: the whole check ran behind a black screen. Wait
@@ -910,7 +927,7 @@ recover_leaf_daemon_crash() {
 
     if ! pidof weston >/dev/null 2>&1; then
         log_msg "unclean Leaf daemon exit left Weston stopped; starting compositor"
-        /etc/init.d/S49weston start >>"$LOG" 2>&1 || true
+        weston_initd start || true
         i=0
         while [ "$i" -lt 50 ]; do
             pidof weston >/dev/null 2>&1 && break
@@ -1579,6 +1596,76 @@ power_close_storage() {
         /usr/bin/umrk-leaf-session power-transition "$1"
 }
 
+# SD card mount points; mmcblk0 is the internal eMMC.
+power_card_mounts() {
+    awk '{ for (i = 7; i <= NF; i++) if ($i == "-") {
+            if ($(i + 2) ~ /^\/dev\/mmcblk[1-9]/) print $5; break } }' \
+        "$POWER_MOUNTINFO" 2>/dev/null
+}
+
+# The compositor, its clients and the S49weston log tee. One pass over /proc
+# rather than a process per entry: this runs before every shutdown barrier.
+# getline rather than awk's own file list: BusyBox awk stops at the first file
+# it cannot open, so one process exiting between the glob and the read would
+# hide every pid after it.
+compositor_pids() {
+    awk 'BEGIN { for (i = 1; i < ARGC; i++) {
+            f = ARGV[i]
+            if ((getline line < f) > 0 && line ~ /^weston(-|$)/) {
+                n = split(f, part, "/"); print part[n - 1] }
+            close(f) } }' \
+        "$POWER_PROC"/[0-9]*/comm 2>/dev/null
+    for cmdline in $(grep -l '/var/log/weston\.log' "$POWER_PROC"/[0-9]*/cmdline 2>/dev/null); do
+        dir="${cmdline%/cmdline}"
+        [ "$(cat "$dir/comm" 2>/dev/null)" = tee ] && echo "${dir##*/}"
+    done
+}
+
+# Compositor processes that map, open or sit in a file on an SD card.
+compositor_card_holders() {
+    cards="$(power_card_mounts)"
+    [ -n "$cards" ] || return 0
+    for pid in $(compositor_pids); do
+        dir="$POWER_PROC/$pid"
+        {
+            awk '{ print $6 }' "$dir/maps" 2>/dev/null
+            for link in "$dir/cwd" "$dir"/fd/*; do
+                readlink "$link" 2>/dev/null
+            done
+        } | while read -r path; do
+            for card in $cards; do
+                case "$path" in "$card"|"$card"/*) echo "$pid"; exit 0 ;; esac
+            done
+        done
+    done
+}
+
+# A compositor restarted inside a Leaf generation can carry the launcher's card
+# LD_LIBRARY_PATH (Jawaka before its direct-DRM restart was fixed, or any other
+# path that gets it wrong). After a launcher update replaces those libraries,
+# its mappings pin deleted inodes and every barrier fails as busy. Restart it
+# from the rootfs rather than stopping it, so the pause screens still draw.
+power_release_compositor() {
+    holders="$(compositor_card_holders | tr '\n' ' ')"
+    [ -n "$holders" ] || return 0
+    power_log "compositor holds an SD card (pids ${holders% }); restarting Weston from the rootfs"
+    if [ "$(cat "$HDMI_STATUS" 2>/dev/null)" = connected ]; then
+        weston_initd restart WESTON_DRM_SINGLE_HEAD=1 WESTON_DRM_PRIMARY=DSI-1 ||
+            power_log "Weston restart failed"
+    else
+        weston_initd restart || power_log "Weston restart failed"
+    fi
+    # The old clients and tee exit once the compositor is gone.
+    polls=0
+    while [ -n "$(compositor_card_holders)" ] && [ "$polls" -lt 40 ]; do
+        sleep .05
+        polls=$((polls + 1))
+    done
+    # Any screen was a client of the old compositor.
+    POWER_SCREEN=""
+    wait_for_compositor 30 || power_log "compositor socket not back after the restart"
+}
+
 run_power_transition() {
     case "${1:-}" in reboot|poweroff) power_action="$1" ;; *) exit 2 ;; esac
     cd / || exit 1
@@ -1586,6 +1673,7 @@ run_power_transition() {
     exec </dev/null >>"$LOG" 2>&1
     attempts=0
     while true; do
+        power_release_compositor
         rootfs_env "$POWER_TRANSITION" "$power_action"
         power_log "shutdown paused: storage could not be closed"
         retry_failed=0
@@ -1641,14 +1729,14 @@ ensure_panel_first_weston() {
     [ "$PLATFORM" = "mlp1" ] || return 0
     # Only act when a cable is actually present — the hang is HDMI-specific, and a
     # cable-less boot needs no restart.
-    [ "$(cat /sys/class/drm/card0-HDMI-A-1/status 2>/dev/null)" = "connected" ] || return 0
+    [ "$(cat "$HDMI_STATUS" 2>/dev/null)" = "connected" ] || return 0
     pgrep -x weston >/dev/null 2>&1 || return 0
 
     log_msg "HDMI connected at boot; forcing weston single-head on the panel"
     export WESTON_DRM_SINGLE_HEAD=1
     export WESTON_DRM_PRIMARY=DSI-1
     rm -f /tmp/.weston_drm.conf 2>/dev/null || true
-    /etc/init.d/S49weston restart >>"$LOG" 2>&1 || true
+    weston_initd restart || true
 
     # Wait for the compositor socket so the boot splash / launcher connect cleanly.
     i=0
