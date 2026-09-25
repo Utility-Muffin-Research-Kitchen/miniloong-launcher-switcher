@@ -35,6 +35,7 @@ help:
 	@echo "  make release-version-test              validate release id/version separation"
 	@echo "  make mount-stub-test                    validate immutable rootfs mount stubs"
 	@echo "  make storage-repair-test                validate SD repair requests, holds and boot runner"
+	@echo "  make leftover-ledd-test                 validate no orphaned LED engine keeps a card open"
 	@echo "  make wifi-resume-test                   validate Wi-Fi recovery and worker cleanup"
 	@echo "  make bundled-themes-test                validate shipped themes reach the card"
 	@echo "  make boot-animation-test                validate uninstall restores the stock boot animation"
@@ -80,6 +81,11 @@ mount-stub-test:
 	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
 	@tools/mount-stub-fixtures.sh
 	@python3 tests/test_release_version.py
+
+.PHONY: leftover-ledd-test
+leftover-ledd-test:
+	@sh -n device/umrk-leaf-session
+	@python3 tests/test_leftover_ledd.py
 
 # Generate the SD-root OTA install payload around an assembled launcher bundle.
 sd-payload:
