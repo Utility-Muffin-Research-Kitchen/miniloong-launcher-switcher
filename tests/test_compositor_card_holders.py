@@ -90,6 +90,16 @@ class HolderScanTest(CompositorFixture):
                      cmdline=['tee', '/var/log/weston.log'])
         self.assertEqual(self.holders(), [1001, 1004])
 
+    def test_a_process_exiting_mid_scan_hides_no_later_pid(self):
+        # Listed by the glob, gone before awk opens it: a dangling comm sorted
+        # ahead of the compositor. BusyBox awk used to abort the whole scan here.
+        gone = self.proc / '1000'
+        (gone / 'fd').mkdir(parents=True)
+        os.symlink(self.root / 'exited', gone / 'comm')
+        self.process(1001, 'weston', maps=[f'{self.lib}/libz.so.1'])
+        self.process(1002, 'weston-keyboard', maps=[f'{self.lib}/libz.so.1'])
+        self.assertEqual(self.holders(), [1001, 1002])
+
     def test_rootfs_family_eemc_and_other_processes_are_not_holders(self):
         self.process(1001, 'weston', maps=['/usr/lib/libweston-10.so.0'])
         self.process(1002, 'weston-keyboard', fds=[f'{self.userdata}/x'])

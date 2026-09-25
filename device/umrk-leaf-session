@@ -1605,9 +1605,15 @@ power_card_mounts() {
 
 # The compositor, its clients and the S49weston log tee. One pass over /proc
 # rather than a process per entry: this runs before every shutdown barrier.
+# getline rather than awk's own file list: BusyBox awk stops at the first file
+# it cannot open, so one process exiting between the glob and the read would
+# hide every pid after it.
 compositor_pids() {
-    awk 'FNR == 1 && /^weston(-|$)/ {
-            n = split(FILENAME, part, "/"); print part[n - 1] }' \
+    awk 'BEGIN { for (i = 1; i < ARGC; i++) {
+            f = ARGV[i]
+            if ((getline line < f) > 0 && line ~ /^weston(-|$)/) {
+                n = split(f, part, "/"); print part[n - 1] }
+            close(f) } }' \
         "$POWER_PROC"/[0-9]*/comm 2>/dev/null
     for cmdline in $(grep -l '/var/log/weston\.log' "$POWER_PROC"/[0-9]*/cmdline 2>/dev/null); do
         dir="${cmdline%/cmdline}"
