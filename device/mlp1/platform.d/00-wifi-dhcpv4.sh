@@ -19,12 +19,18 @@
 # one-shot check, watching for the kernel's own resume record on /dev/kmsg.
 # link_watch_loop also handles successful connections while awake, keeping
 # saved profiles eligible for failover and refreshing the lease on each link.
-# After each lease, drop_stale_dns clears the previous network's DNS servers.
+# Its dhcp_retry_loop keeps asking for a lease while the link is up without
+# one, and drop_stale_dns clears the previous network's DNS servers.
 
 IFACE="${UMRK_WIFI_IFACE:-wlan0}"
 WAIT_SECONDS="${UMRK_WIFI_DHCP_WAIT_SECONDS:-75}"
 GRACE_SECONDS="${UMRK_WIFI_DHCP_GRACE_SECONDS:-12}"
 DHCP_TRIES="${UMRK_WIFI_DHCP_TRIES:-20}"
+# Retries after a failed lease while associated; see dhcp_retry_loop.
+DHCP_RETRY_TRIES="${UMRK_WIFI_DHCP_RETRY_TRIES:-3}"
+DHCP_RETRY_POLL_SECONDS="${UMRK_WIFI_DHCP_RETRY_POLL_SECONDS:-5}"
+DHCP_RETRY_MIN_SECONDS="${UMRK_WIFI_DHCP_RETRY_MIN_SECONDS:-10}"
+DHCP_RETRY_MAX_SECONDS="${UMRK_WIFI_DHCP_RETRY_MAX_SECONDS:-120}"
 RESOLV_CONF="${UMRK_RESOLV_CONF:-/etc/resolv.conf}"
 PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.pid"
 DHCP_LOCK="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.lock"
@@ -95,14 +101,20 @@ enforce_wifi_off() {
         ifconfig "$IFACE" down 2>/dev/null || true
 }
 
+iface_udhcpc_pids() {
+    for dhcp_pid in $(pidof udhcpc 2>/dev/null); do
+        case " $(tr '\0' ' ' 2>/dev/null < "/proc/$dhcp_pid/cmdline")" in
+            *" -i $IFACE "*|*" -i$IFACE "*) echo "$dhcp_pid" ;;
+        esac
+    done
+}
+
 # Kill any udhcpc instances already bound to $IFACE. Used before both the
 # initial lease request and every resume-triggered renewal so a stale client
 # from a prior association (or a prior resume) never races a fresh one.
 kill_stale_udhcpc() {
-    for dhcp_pid in $(pidof udhcpc 2>/dev/null); do
-        case " $(tr '\0' ' ' 2>/dev/null < "/proc/$dhcp_pid/cmdline")" in
-            *" -i $IFACE "*|*" -i$IFACE "*) kill "$dhcp_pid" 2>/dev/null || true ;;
-        esac
+    for dhcp_pid in $(iface_udhcpc_pids); do
+        kill "$dhcp_pid" 2>/dev/null || true
     done
 }
 
@@ -148,17 +160,25 @@ $2") return 0 ;;
     return 1
 }
 
-# Serialize our boot, resume and connection-event requests. Close the lock FD
-# in udhcpc: its lease-renewal daemon must not retain the lock after we return.
+# Serialize our boot, resume, connection-event and retry requests. Close the
+# lock FD in udhcpc: its lease-renewal daemon must not retain the lock after we
+# return. MODE [ATTEMPT]; ATTEMPT is the retry count within one outage.
 renew_ipv4() (
     flock -x 9 || exit 1
     wifi_recovery_allowed || exit 0
     [ "$(wpa_state)" = "COMPLETED" ] || exit 0
-    [ "$1" != boot ] || ! has_ipv4 || exit 0
-    echo "wifi-dhcpv4: $1: requesting DHCPv4 lease on $IFACE"
+    # Boot and retry requests only fill in a missing lease. A retry also leaves
+    # a client that another request started since the retry loop last looked.
+    case "$1" in
+        boot) ! has_ipv4 || exit 0 ;;
+        retry) ! has_ipv4 && [ -z "$(iface_udhcpc_pids)" ] || exit 0 ;;
+    esac
+    tries="$DHCP_TRIES"
+    [ "$1" != retry ] || tries="$DHCP_RETRY_TRIES"
+    echo "wifi-dhcpv4: $1: requesting DHCPv4 lease on $IFACE${2:+ (attempt $2)}"
     kill_stale_udhcpc
     wifi_recovery_allowed || exit 0
-    udhcpc -t "$DHCP_TRIES" -n -i "$IFACE" 9>&-
+    udhcpc -t "$tries" -n -i "$IFACE" 9>&-
     rc=$?
 
     if [ "$rc" -eq 0 ] && has_ipv4; then
@@ -168,7 +188,8 @@ renew_ipv4() (
         drop_stale_dns "$1"
     else
         echo "wifi-dhcpv4: $1: DHCPv4 did not install an address on $IFACE (rc=$rc)"
-        dump_wifi_diag "$1-dhcp-fail"
+        # Retries repeat for as long as an outage lasts; one dump covers it.
+        [ "${2:-1}" -gt 1 ] || dump_wifi_diag "$1-dhcp-fail"
     fi
 ) 9>"$DHCP_LOCK"
 
@@ -390,13 +411,46 @@ connection_event() {
     renew_ipv4 connection
 }
 
+# CONNECTED fires once per association and each lease request is one udhcpc -n
+# run. When an OFFER's ACK never arrives, udhcpc gives up after three selects
+# whatever -t says ("no lease, failing"), and nothing asks again: the link sits
+# at COMPLETED without IPv4 until the next association. While that lasts and no
+# other DHCP client is at it, keep asking, backing off from
+# DHCP_RETRY_MIN_SECONDS to DHCP_RETRY_MAX_SECONDS. Exits with its link watcher
+# (PID $1), which stops this loop's process group on a normal exit.
+dhcp_retry_loop() {
+    trap 'exit 0' INT TERM
+    delay="$DHCP_RETRY_MIN_SECONDS"
+    waited=0
+    attempt=0
+    while worker_running "$1" --link-watch; do
+        sleep "$DHCP_RETRY_POLL_SECONDS"
+        if wifi_off_intended || has_ipv4 ||
+           [ "$(wpa_state)" != "COMPLETED" ] || [ -n "$(iface_udhcpc_pids)" ]; then
+            delay="$DHCP_RETRY_MIN_SECONDS"
+            waited=0
+            attempt=0
+            continue
+        fi
+        waited=$((waited + DHCP_RETRY_POLL_SECONDS))
+        [ "$waited" -ge "$delay" ] || continue
+        attempt=$((attempt + 1))
+        renew_ipv4 retry "$attempt"
+        waited=0
+        delay=$((delay * 2))
+        [ "$delay" -le "$DHCP_RETRY_MAX_SECONDS" ] || delay="$DHCP_RETRY_MAX_SECONDS"
+    done
+}
+
 stop_link_listener() {
-    # The listener and any in-flight callback share a private process group.
-    # Stop both so a queued callback cannot run after Leaf hands off to stock.
-    if [ -n "${link_cli_pid:-}" ]; then
-        kill -TERM -- "-$link_cli_pid" 2>/dev/null || true
-        kill -KILL -- "-$link_cli_pid" 2>/dev/null || true
-    fi
+    # The listener and any in-flight callback share a private process group,
+    # as do the retry loop and its udhcpc. Stop both groups so nothing queued
+    # can run after Leaf hands off to stock.
+    for link_group in "${link_cli_pid:-}" "${dhcp_retry_pid:-}"; do
+        [ -n "$link_group" ] || continue
+        kill -TERM -- "-$link_group" 2>/dev/null || true
+        kill -KILL -- "-$link_group" 2>/dev/null || true
+    done
     rm -f "$LINK_PIDFILE"
 }
 
@@ -416,6 +470,8 @@ link_watch_loop() {
     echo "wifi-dhcpv4: link-watch: monitoring connections on $IFACE"
     setsid wpa_cli -r -i "$IFACE" -a "$0" &
     link_cli_pid=$!
+    setsid "$0" --dhcp-retry "$$" &
+    dhcp_retry_pid=$!
     # The listener does not synthesize CONNECTED for an existing connection.
     # Keep it eligible for failover; the boot worker handles its initial lease.
     if wifi_recovery_allowed && [ "$(wpa_state)" = "COMPLETED" ]; then
@@ -461,6 +517,7 @@ case "${1:-}" in
     --boot-worker) run_worker; exit 0 ;;
     --resume-watch) resume_watch_loop; exit 0 ;;
     --link-watch) link_watch_loop; exit 0 ;;
+    --dhcp-retry) dhcp_retry_loop "${2:-}"; exit 0 ;;
     "$IFACE")
         # wpa_cli invokes the action with interface and event arguments.
         # Disconnects are deliberately passive, including the UI's Disconnect.

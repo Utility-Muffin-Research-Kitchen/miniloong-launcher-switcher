@@ -79,7 +79,11 @@ class WifiResumeTests(unittest.TestCase):
             "UMRK_WIFI_RESTART_SETTLE_SECONDS": "1",
             "UMRK_WIFI_MAX_RECOVERY_SECONDS": "4",
             "UMRK_WIFI_DHCP_GRACE_SECONDS": "0",
+            "UMRK_WIFI_DHCP_RETRY_POLL_SECONDS": "1",
+            "UMRK_WIFI_DHCP_RETRY_MIN_SECONDS": "2",
+            "UMRK_WIFI_DHCP_RETRY_MAX_SECONDS": "8",
             "UMRK_RESOLV_CONF": str(self.root / "etc-resolv.conf"),
+            "WATCHER_PROC": str(self.root / "proc/300"),
             "OFF_AT": "",
             "STUCK": "0",
         }
@@ -236,6 +240,82 @@ wait
 ''')
         self.assertEqual([e for e in self.events() if e.startswith("dhcp-")],
                          ["dhcp-start", "dhcp-end", "dhcp-start", "dhcp-end"])
+
+    # The retry loop polls once per mocked sleep, counted in $ticks. Its link
+    # watcher (PID 300) goes away at END_TICK so the loop returns. The fixture
+    # path comes from the environment: run_shell rewrites /proc/ in the source.
+    RETRY_LOOP = r'''
+pidof() { [ ! -f "$TEST_ROOT/client-running" ] || echo 401; }
+ticks=0
+sleep() {
+    ticks=$((ticks + 1))
+    on_tick
+    [ "$ticks" -lt "$END_TICK" ] || rm -rf "$WATCHER_PROC"
+}
+udhcpc() {
+    n=$(($(cat "$TEST_ROOT/attempts" 2>/dev/null || echo 0) + 1))
+    echo "$n" > "$TEST_ROOT/attempts"
+    record "dhcp $* at $ticks"
+    [ "$n" -gt "$(cat "$TEST_ROOT/failures" 2>/dev/null || echo 0)" ] || return 1
+    touch "$TEST_ROOT/lease"
+}
+dhcp_retry_loop 300
+'''
+
+    def dhcp_attempts(self):
+        return [e for e in self.events() if e.startswith("dhcp")]
+
+    def test_failed_lease_is_retried_with_backoff_while_associated(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        (self.root / "failures").write_text("3\n")
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
+        self.env["END_TICK"] = "40"
+        # A second outage at tick 30 starts over from the shortest delay.
+        output = self.run_shell('''
+on_tick() { [ "$ticks" != 30 ] || rm -f "$TEST_ROOT/lease"; }
+''' + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), [
+            f"dhcp -t 3 -n -i wlan0 at {tick}" for tick in (2, 6, 14, 22, 31)])
+        self.assertEqual(output.count("(attempt 1)"), 2)
+        self.assertIn("(attempt 4)", output)
+        self.assertEqual(output.count("diag (retry-dhcp-fail)"), 1)
+
+    def test_retry_holds_off_while_unassociated_off_or_another_client_runs(self):
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
+        self.env["END_TICK"] = "20"
+        self.run_shell('''
+on_tick() {
+    case "$ticks" in
+        6) echo COMPLETED > "$TEST_ROOT/state"; touch "$TEST_ROOT/client-running" ;;
+        11) rm "$TEST_ROOT/client-running"; touch "$WIFI_DISABLED_MARKER" ;;
+        16) rm "$WIFI_DISABLED_MARKER" ;;
+    esac
+}
+''' + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), ["dhcp -t 3 -n -i wlan0 at 17"])
+        # Seeing Wi-Fi off is not a reason to take the radio down again.
+        self.assertFalse([e for e in self.events() if e.startswith(("ifconfig", "kill"))])
+
+    def test_retry_loop_ends_with_its_link_watcher(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--resume-watch")
+        self.env["END_TICK"] = "40"
+        self.run_shell("on_tick() { :; }\n" + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), [])
+
+    def test_link_watch_stops_listener_and_retry_groups(self):
+        output = self.run_shell('''
+setsid() { record "setsid $*"; }
+link_watch_loop
+echo "groups $link_cli_pid $dhcp_retry_pid self $$"
+''')
+        listener, retry, own = re.search(r"groups (\d+) (\d+) self (\d+)", output).groups()
+        script = self.root / "00-wifi-dhcpv4.sh"
+        events = self.events()
+        self.assertIn(f"setsid {script} --dhcp-retry {own}", events)
+        for group in (listener, retry):
+            self.assertIn(f"kill -TERM -- -{group}", events)
+            self.assertIn(f"kill -KILL -- -{group}", events)
 
     def write_resolv(self, text):
         # The firmware links /etc/resolv.conf into /tmp.
