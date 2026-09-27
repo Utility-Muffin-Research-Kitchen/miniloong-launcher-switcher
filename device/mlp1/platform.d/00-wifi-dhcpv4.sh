@@ -19,11 +19,13 @@
 # one-shot check, watching for the kernel's own resume record on /dev/kmsg.
 # link_watch_loop also handles successful connections while awake, keeping
 # saved profiles eligible for failover and refreshing the lease on each link.
+# After each lease, drop_stale_dns clears the previous network's DNS servers.
 
 IFACE="${UMRK_WIFI_IFACE:-wlan0}"
 WAIT_SECONDS="${UMRK_WIFI_DHCP_WAIT_SECONDS:-75}"
 GRACE_SECONDS="${UMRK_WIFI_DHCP_GRACE_SECONDS:-12}"
 DHCP_TRIES="${UMRK_WIFI_DHCP_TRIES:-20}"
+RESOLV_CONF="${UMRK_RESOLV_CONF:-/etc/resolv.conf}"
 PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.pid"
 DHCP_LOCK="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.lock"
 LINK_PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-link-watch.pid"
@@ -104,6 +106,29 @@ kill_stale_udhcpc() {
     done
 }
 
+# The stock udhcpc script replaces only the resolv.conf lines it tagged
+# "# wlan0". Stock dhcpcd writes untagged ones at boot and then exits, so after
+# a switch to another network its servers stay listed ahead of the new lease's.
+# From there they usually don't answer, and every lookup waits out their
+# timeouts (5 s each) before reaching one that does. Once a lease has listed
+# its own servers, keep only tagged lines and resolver options. A lease without
+# DNS servers leaves the file alone rather than emptying it.
+drop_stale_dns() {
+    keep='^[a-z]+[[:space:]].*[[:space:]]#[[:space:]]*[^[:space:]]+[[:space:]]*$|^options[[:space:]]'
+    grep -Eq "^nameserver[[:space:]].*[[:space:]]# $IFACE\$" "$RESOLV_CONF" 2>/dev/null || return 0
+    grep -Evq "$keep" "$RESOLV_CONF" || return 0
+    grep -Ev "$keep" "$RESOLV_CONF" | grep -E '^(nameserver|search|domain)[[:space:]]' |
+        sed "s/^/wifi-dhcpv4: $1: dropping DNS entry not from this lease: /"
+    # Replace the target, not a symlink to it (/etc/resolv.conf -> /tmp).
+    target="$(readlink -f "$RESOLV_CONF" 2>/dev/null)"
+    [ -n "$target" ] || target="$RESOLV_CONF"
+    if ! grep -E "$keep" "$RESOLV_CONF" > "$target.umrk-$$" ||
+       ! mv -f "$target.umrk-$$" "$target"; then
+        rm -f "$target.umrk-$$"
+        echo "wifi-dhcpv4: $1: could not rewrite $RESOLV_CONF"
+    fi
+}
+
 # Recheck throughout recovery: the UI may have stopped the radio while a
 # foreground command was running. Undo any overlapping interface/daemon start.
 wifi_recovery_allowed() {
@@ -140,6 +165,7 @@ renew_ipv4() (
         echo "wifi-dhcpv4: $1: IPv4 ready on $IFACE"
         ip -4 addr show "$IFACE" 2>/dev/null | sed "s/^/wifi-dhcpv4: $1: /"
         ip -4 route 2>/dev/null | sed "s/^/wifi-dhcpv4: $1: /"
+        drop_stale_dns "$1"
     else
         echo "wifi-dhcpv4: $1: DHCPv4 did not install an address on $IFACE (rc=$rc)"
         dump_wifi_diag "$1-dhcp-fail"
