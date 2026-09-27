@@ -79,6 +79,11 @@ class WifiResumeTests(unittest.TestCase):
             "UMRK_WIFI_RESTART_SETTLE_SECONDS": "1",
             "UMRK_WIFI_MAX_RECOVERY_SECONDS": "4",
             "UMRK_WIFI_DHCP_GRACE_SECONDS": "0",
+            "UMRK_WIFI_DHCP_RETRY_POLL_SECONDS": "1",
+            "UMRK_WIFI_DHCP_RETRY_MIN_SECONDS": "2",
+            "UMRK_WIFI_DHCP_RETRY_MAX_SECONDS": "8",
+            "UMRK_RESOLV_CONF": str(self.root / "etc-resolv.conf"),
+            "WATCHER_PROC": str(self.root / "proc/300"),
             "OFF_AT": "",
             "STUCK": "0",
         }
@@ -208,6 +213,42 @@ resume_reconnect
         self.assertIn("wpa_cli -i wlan0 save_config", self.events())
         self.assertIn("dhcp", self.events())
 
+    def test_joined_network_is_ranked_first_before_the_others_are_enabled(self):
+        # Joined iPhone (2) after home (1) had been ranked first.
+        mock = r'''
+wpa_cli() {
+    record "wpa_cli $*"
+    case "$3" in
+        status) echo "id=2" ;;
+        list_networks) printf 'network id / ssid / bssid / flags\n'
+                       printf '0\tSSID\tany\t[DISABLED]\n1\tHome\tany\t[DISABLED]\n'
+                       printf '2\tiPhone\tany\t[CURRENT]\n' ;;
+        get_network) cat "$TEST_ROOT/priority-$4" 2>/dev/null || echo 0 ;;
+        set_network) echo "$6" > "$TEST_ROOT/priority-$4" ;;
+    esac
+}
+setsid() { :; }
+'''
+        (self.root / "state").write_text("COMPLETED\n")
+        for case, body, args in (("connected", mock, ("wlan0", "CONNECTED")),
+                                 ("link-watch start", mock + "link_watch_loop", ())):
+            with self.subTest(case=case):
+                for net_id, priority in (("0", "0"), ("1", "1"), ("2", "0")):
+                    (self.root / f"priority-{net_id}").write_text(priority + "\n")
+                (self.root / "events").unlink(missing_ok=True)
+                self.run_shell(body, startup=bool(args), args=args)
+                self.assertEqual([(self.root / f"priority-{n}").read_text() for n in "012"],
+                                 ["0\n", "0\n", "1\n"])
+                events = self.events()
+                self.assertNotIn("wpa_cli -i wlan0 set_network 0 priority 0", events)
+                # A scan between enabling and ranking would move us off it.
+                self.assertLess(events.index("wpa_cli -i wlan0 set_network 2 priority 1"),
+                                events.index("wpa_cli -i wlan0 enable_network all"))
+                self.assertLess(events.index("wpa_cli -i wlan0 set_network 1 priority 0"),
+                                events.index("wpa_cli -i wlan0 enable_network all"))
+                self.assertLess(events.index("wpa_cli -i wlan0 enable_network all"),
+                                events.index("wpa_cli -i wlan0 save_config"))
+
     def test_disconnected_and_stale_connected_events_do_not_reconnect(self):
         for event in ("DISCONNECTED", "CONNECTED"):
             with self.subTest(event=event):
@@ -235,6 +276,137 @@ wait
 ''')
         self.assertEqual([e for e in self.events() if e.startswith("dhcp-")],
                          ["dhcp-start", "dhcp-end", "dhcp-start", "dhcp-end"])
+
+    # The retry loop polls once per mocked sleep, counted in $ticks. Its link
+    # watcher (PID 300) goes away at END_TICK so the loop returns. The fixture
+    # path comes from the environment: run_shell rewrites /proc/ in the source.
+    RETRY_LOOP = r'''
+pidof() { [ ! -f "$TEST_ROOT/client-running" ] || echo 401; }
+ticks=0
+sleep() {
+    ticks=$((ticks + 1))
+    on_tick
+    [ "$ticks" -lt "$END_TICK" ] || rm -rf "$WATCHER_PROC"
+}
+udhcpc() {
+    n=$(($(cat "$TEST_ROOT/attempts" 2>/dev/null || echo 0) + 1))
+    echo "$n" > "$TEST_ROOT/attempts"
+    record "dhcp $* at $ticks"
+    [ "$n" -gt "$(cat "$TEST_ROOT/failures" 2>/dev/null || echo 0)" ] || return 1
+    touch "$TEST_ROOT/lease"
+}
+dhcp_retry_loop 300
+'''
+
+    def dhcp_attempts(self):
+        return [e for e in self.events() if e.startswith("dhcp")]
+
+    def test_failed_lease_is_retried_with_backoff_while_associated(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        (self.root / "failures").write_text("3\n")
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
+        self.env["END_TICK"] = "40"
+        # A second outage at tick 30 starts over from the shortest delay.
+        output = self.run_shell('''
+on_tick() { [ "$ticks" != 30 ] || rm -f "$TEST_ROOT/lease"; }
+''' + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), [
+            f"dhcp -t 3 -n -i wlan0 at {tick}" for tick in (2, 6, 14, 22, 31)])
+        self.assertEqual(output.count("(attempt 1)"), 2)
+        self.assertIn("(attempt 4)", output)
+        self.assertEqual(output.count("diag (retry-dhcp-fail)"), 1)
+
+    def test_retry_holds_off_while_unassociated_off_or_another_client_runs(self):
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
+        self.env["END_TICK"] = "20"
+        self.run_shell('''
+on_tick() {
+    case "$ticks" in
+        6) echo COMPLETED > "$TEST_ROOT/state"; touch "$TEST_ROOT/client-running" ;;
+        11) rm "$TEST_ROOT/client-running"; touch "$WIFI_DISABLED_MARKER" ;;
+        16) rm "$WIFI_DISABLED_MARKER" ;;
+    esac
+}
+''' + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), ["dhcp -t 3 -n -i wlan0 at 17"])
+        # Seeing Wi-Fi off is not a reason to take the radio down again.
+        self.assertFalse([e for e in self.events() if e.startswith(("ifconfig", "kill"))])
+
+    def test_retry_loop_ends_with_its_link_watcher(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--resume-watch")
+        self.env["END_TICK"] = "40"
+        self.run_shell("on_tick() { :; }\n" + self.RETRY_LOOP)
+        self.assertEqual(self.dhcp_attempts(), [])
+
+    def test_link_watch_stops_listener_and_retry_groups(self):
+        output = self.run_shell('''
+setsid() { record "setsid $*"; }
+link_watch_loop
+echo "groups $link_cli_pid $dhcp_retry_pid self $$"
+''')
+        listener, retry, own = re.search(r"groups (\d+) (\d+) self (\d+)", output).groups()
+        script = self.root / "00-wifi-dhcpv4.sh"
+        events = self.events()
+        self.assertIn(f"setsid {script} --dhcp-retry {own}", events)
+        for group in (listener, retry):
+            self.assertIn(f"kill -TERM -- -{group}", events)
+            self.assertIn(f"kill -KILL -- -{group}", events)
+
+    def write_resolv(self, text):
+        # The firmware links /etc/resolv.conf into /tmp.
+        target = self.root / "tmp-resolv.conf"
+        target.write_text(text)
+        (self.root / "etc-resolv.conf").symlink_to(target)
+        return target
+
+    STALE_RESOLV = """\
+# Generated by dhcpcd from wlan0.dhcp
+# /etc/resolv.conf.head can replace this line
+search telenet.be
+nameserver 195.130.130.3
+nameserver 195.130.131.3
+nameserver 10.0.0.1 # usb0
+options timeout:2
+# /etc/resolv.conf.tail can replace this line
+"""
+
+    # What the stock default.script does on bound: drop its own tagged lines,
+    # then append the lease's servers.
+    STOCK_BOUND = r'''
+udhcpc() {
+    record dhcp
+    grep -v '# wlan0$' "$UMRK_RESOLV_CONF" > "$TEST_ROOT/resolv.tmp"
+    cat "$TEST_ROOT/resolv.tmp" > "$UMRK_RESOLV_CONF"
+    for dns in $LEASE_DNS; do
+        echo "nameserver $dns # wlan0" >> "$UMRK_RESOLV_CONF"
+    done
+    touch "$TEST_ROOT/lease"
+}
+renew_ipv4 connection
+'''
+
+    def test_new_lease_drops_dns_servers_left_from_the_previous_network(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        target = self.write_resolv(self.STALE_RESOLV + "nameserver 192.168.0.1 # wlan0\n")
+        self.env["LEASE_DNS"] = "172.20.10.1"
+        output = self.run_shell(self.STOCK_BOUND)
+        self.assertEqual(target.read_text(), "nameserver 10.0.0.1 # usb0\n"
+                         "options timeout:2\nnameserver 172.20.10.1 # wlan0\n")
+        self.assertTrue((self.root / "etc-resolv.conf").is_symlink())
+        self.assertIn("dropping DNS entry not from this lease: nameserver 195.130.130.3", output)
+        self.assertIn("dropping DNS entry not from this lease: search telenet.be", output)
+        self.assertEqual(list(self.root.glob("tmp-resolv.conf.umrk-*")), [])
+
+    def test_lease_without_dns_or_failed_lease_keeps_resolv_conf(self):
+        (self.root / "state").write_text("COMPLETED\n")
+        target = self.write_resolv(self.STALE_RESOLV)
+        for case, body in (("no-dns", self.STOCK_BOUND),
+                           ("failed", "udhcpc() { return 1; }\nrenew_ipv4 connection")):
+            with self.subTest(case=case):
+                self.env["LEASE_DNS"] = ""
+                self.run_shell(body)
+                self.assertEqual(target.read_text(), self.STALE_RESOLV)
 
     def test_session_teardown_stops_only_verified_workers(self):
         self.proc(101, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--boot-worker")
