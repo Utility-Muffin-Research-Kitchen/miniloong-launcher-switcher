@@ -213,6 +213,42 @@ resume_reconnect
         self.assertIn("wpa_cli -i wlan0 save_config", self.events())
         self.assertIn("dhcp", self.events())
 
+    def test_joined_network_is_ranked_first_before_the_others_are_enabled(self):
+        # Joined iPhone (2) after home (1) had been ranked first.
+        mock = r'''
+wpa_cli() {
+    record "wpa_cli $*"
+    case "$3" in
+        status) echo "id=2" ;;
+        list_networks) printf 'network id / ssid / bssid / flags\n'
+                       printf '0\tSSID\tany\t[DISABLED]\n1\tHome\tany\t[DISABLED]\n'
+                       printf '2\tiPhone\tany\t[CURRENT]\n' ;;
+        get_network) cat "$TEST_ROOT/priority-$4" 2>/dev/null || echo 0 ;;
+        set_network) echo "$6" > "$TEST_ROOT/priority-$4" ;;
+    esac
+}
+setsid() { :; }
+'''
+        (self.root / "state").write_text("COMPLETED\n")
+        for case, body, args in (("connected", mock, ("wlan0", "CONNECTED")),
+                                 ("link-watch start", mock + "link_watch_loop", ())):
+            with self.subTest(case=case):
+                for net_id, priority in (("0", "0"), ("1", "1"), ("2", "0")):
+                    (self.root / f"priority-{net_id}").write_text(priority + "\n")
+                (self.root / "events").unlink(missing_ok=True)
+                self.run_shell(body, startup=bool(args), args=args)
+                self.assertEqual([(self.root / f"priority-{n}").read_text() for n in "012"],
+                                 ["0\n", "0\n", "1\n"])
+                events = self.events()
+                self.assertNotIn("wpa_cli -i wlan0 set_network 0 priority 0", events)
+                # A scan between enabling and ranking would move us off it.
+                self.assertLess(events.index("wpa_cli -i wlan0 set_network 2 priority 1"),
+                                events.index("wpa_cli -i wlan0 enable_network all"))
+                self.assertLess(events.index("wpa_cli -i wlan0 set_network 1 priority 0"),
+                                events.index("wpa_cli -i wlan0 enable_network all"))
+                self.assertLess(events.index("wpa_cli -i wlan0 enable_network all"),
+                                events.index("wpa_cli -i wlan0 save_config"))
+
     def test_disconnected_and_stale_connected_events_do_not_reconnect(self):
         for event in ("DISCONNECTED", "CONNECTED"):
             with self.subTest(event=event):

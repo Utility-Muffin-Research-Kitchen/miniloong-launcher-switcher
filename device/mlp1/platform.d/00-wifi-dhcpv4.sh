@@ -18,7 +18,8 @@
 # resume_watch_loop below is a long-lived background daemon rather than a
 # one-shot check, watching for the kernel's own resume record on /dev/kmsg.
 # link_watch_loop also handles successful connections while awake, keeping
-# saved profiles eligible for failover and refreshing the lease on each link.
+# saved profiles eligible for failover without letting them displace the
+# network just joined, and refreshing the lease on each link.
 # Its dhcp_retry_loop keeps asking for a lease while the link is up without
 # one, and drop_stale_dns clears the previous network's DNS servers.
 
@@ -400,13 +401,34 @@ resume_reconnect() {
     renew_ipv4 resume
 }
 
+# With every saved network enabled at equal priority, wpa_supplicant 2.10
+# switches to whichever one ranks best after each scan, even while the current
+# one works: a different network block counts as a reason to roam. The Wi-Fi
+# page scans every 6 s, so choosing the weaker of two visible saved networks
+# lasted about 5 s before it moved back. Rank the network we are on above the
+# rest. Scans then keep it while it is visible, and losing it still falls back
+# to another saved network, which in turn becomes the one kept.
+prefer_current_network() {
+    current="$(wpa_cli -i "$IFACE" status 2>/dev/null | sed -n 's/^id=//p' | head -n 1)"
+    case "$current" in ''|*[!0-9]*) return 0 ;; esac
+    for net_id in $(wpa_cli -i "$IFACE" list_networks 2>/dev/null |
+                    sed -n 's/^\([0-9][0-9]*\)[[:space:]].*/\1/p'); do
+        want=0
+        [ "$net_id" != "$current" ] || want=1
+        [ "$(wpa_cli -i "$IFACE" get_network "$net_id" priority 2>/dev/null)" = "$want" ] ||
+            wpa_cli -i "$IFACE" set_network "$net_id" priority "$want" >/dev/null 2>&1 || true
+    done
+}
+
 # select_network disables other saved profiles while a manual join is pending.
 # Re-enable them only after association succeeds, so the chosen network gets
 # its join attempt and subsequent loss can fall back to another saved profile.
+# Rank it first before that, or the next scan can move us straight off it.
 # CONNECTED also covers automatic failover while a game or another app is open.
 connection_event() {
     wifi_recovery_allowed || return 0
     [ "$(wpa_state)" = "COMPLETED" ] || return 0
+    prefer_current_network
     reenable_all_networks || return 0
     renew_ipv4 connection
 }
@@ -475,6 +497,7 @@ link_watch_loop() {
     # The listener does not synthesize CONNECTED for an existing connection.
     # Keep it eligible for failover; the boot worker handles its initial lease.
     if wifi_recovery_allowed && [ "$(wpa_state)" = "COMPLETED" ]; then
+        prefer_current_network
         reenable_all_networks
     fi
     wait "$link_cli_pid"
