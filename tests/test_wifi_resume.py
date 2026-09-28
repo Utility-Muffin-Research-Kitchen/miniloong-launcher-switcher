@@ -83,6 +83,9 @@ class WifiResumeTests(unittest.TestCase):
             "UMRK_WIFI_DHCP_RETRY_MIN_SECONDS": "2",
             "UMRK_WIFI_DHCP_RETRY_MAX_SECONDS": "8",
             "UMRK_RESOLV_CONF": str(self.root / "etc-resolv.conf"),
+            # No stock udhcpc script unless a test provides one, so a host that
+            # has busybox's still runs the polling path the other tests expect.
+            "UMRK_UDHCPC_DEFAULT_SCRIPT": str(self.root / "no-default.script"),
             "WATCHER_PROC": str(self.root / "proc/300"),
             "OFF_AT": "",
             "STUCK": "0",
@@ -338,6 +341,60 @@ on_tick() {
         self.env["END_TICK"] = "40"
         self.run_shell("on_tick() { :; }\n" + self.RETRY_LOOP)
         self.assertEqual(self.dhcp_attempts(), [])
+
+    def stock_udhcpc_script(self):
+        stock = self.root / "default.script"
+        stock.write_text('#!/bin/sh\necho "stock $1 $interface" >> "$TEST_ROOT/events"\n')
+        stock.chmod(0o755)
+        self.env["UMRK_UDHCPC_DEFAULT_SCRIPT"] = str(stock)
+
+    def test_held_lease_waits_without_polling_until_it_is_lost(self):
+        self.stock_udhcpc_script()
+        (self.root / "state").write_text("COMPLETED\n")
+        (self.root / "lease").touch()
+        (self.root / "failures").write_text("1\n")
+        self.proc(300, "/bin/sh", "/old/platform.d/00-wifi-dhcpv4.sh", "--link-watch")
+        self.env["END_TICK"] = "1000"
+        # Real time, not the mocked ticks: drop the lease while the loop waits
+        # and wake it until it polls; once it has a lease again and waits,
+        # remove its watcher and wake it until it exits.
+        self.run_shell(r'''
+on_tick() {
+    [ ! -f "$TEST_ROOT/lease" ] || record "tick $ticks with a lease"
+    record "tick $ticks"
+}
+fifos() { ls "$TMPDIR"/umrk-wifi-dhcp-retry.*.fifo >/dev/null 2>&1; }
+(
+    /bin/sleep 0.3
+    rm -f "$TEST_ROOT/lease"
+    until grep -q '^tick' "$TEST_ROOT/events" 2>/dev/null; do
+        wake_dhcp_retry; /bin/sleep 0.05
+    done
+    until [ -f "$TEST_ROOT/lease" ]; do /bin/sleep 0.05; done
+    /bin/sleep 0.3
+    rm -rf "$WATCHER_PROC"
+    while fifos; do wake_dhcp_retry; /bin/sleep 0.05; done
+) &
+''' + self.RETRY_LOOP + "wait\n")
+        script = self.root / "00-wifi-dhcpv4.sh"
+        self.assertEqual(self.dhcp_attempts(), [
+            f"dhcp -t 3 -n -i wlan0 -s {script} at {tick}" for tick in (2, 6)])
+        self.assertFalse([e for e in self.events() if e.endswith("with a lease")])
+        self.assertFalse(list(self.root.glob("umrk-wifi-dhcp-retry.*.fifo")))
+
+    def test_udhcpc_events_reach_the_stock_script_and_wake_on_loss(self):
+        self.stock_udhcpc_script()
+        self.env["interface"] = "wlan0"
+        fifo = self.root / "umrk-wifi-dhcp-retry.999.fifo"
+        os.mkfifo(fifo)
+        waiting = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
+        self.addCleanup(os.close, waiting)
+        for event in ("deconfig", "bound", "renew", "leasefail", "nak"):
+            self.run_shell("", startup=True, args=(event,))
+        self.assertEqual(self.events(), [
+            f"stock {event} wlan0"
+            for event in ("deconfig", "bound", "renew", "leasefail", "nak")])
+        self.assertEqual(os.read(waiting, 4096).decode().split(), ["wake"] * 3)
 
     def test_link_watch_stops_listener_and_retry_groups(self):
         output = self.run_shell('''
