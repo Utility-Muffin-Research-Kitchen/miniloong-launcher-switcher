@@ -13,7 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
-        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test shutdown-pause-test compositor-card-test wifi-resume-test \
+        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test pulseaudio-supervisor-test shutdown-pause-test compositor-card-test wifi-resume-test \
         bundled-themes-test boot-animation-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
@@ -37,6 +37,7 @@ help:
 	@echo "  make storage-repair-test                validate SD repair requests, holds and boot runner"
 	@echo "  make leftover-ledd-test                 validate no orphaned LED engine keeps a card open"
 	@echo "  make wifi-resume-test                   validate Wi-Fi recovery and worker cleanup"
+	@echo "  make pulseaudio-supervisor-test         validate PulseAudio is restarted and stopped cleanly"
 	@echo "  make bundled-themes-test                validate shipped themes reach the card"
 	@echo "  make boot-animation-test                validate uninstall restores the stock boot animation"
 	@echo "  make compositor-card-test               validate Weston never keeps an SD card from closing"
@@ -63,6 +64,10 @@ power-transition-test:
 stock-handoff-test:
 	@sh -n device/umrk-leaf-session
 	@python3 tests/test_stock_handoff.py
+
+pulseaudio-supervisor-test:
+	@sh -n device/umrk-leaf-session
+	@python3 tests/test_pulseaudio_supervisor.py
 
 shutdown-pause-test:
 	@sh -n device/umrk-leaf-session
