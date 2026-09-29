@@ -657,22 +657,86 @@ start_usb_adb() {
     return 0
 }
 
+# A daemon that keeps exiting this soon after it starts is broken, not crashing.
+PULSE_QUICK_EXIT_S="${PULSE_QUICK_EXIT_S:-30}"
+PULSE_QUICK_EXIT_LIMIT="${PULSE_QUICK_EXIT_LIMIT:-5}"
+PULSE_RESTART_DELAY_S="${PULSE_RESTART_DELAY_S:-2}"
+PULSE_SUPERVISOR_PID=
+
+# PulseAudio's parent for the whole session; the arguments are the daemon's.
+# The kernel SIGKILLs the daemon, with no log line, when its realtime IO thread
+# overruns RLIMIT_RTTIME, and it used to be started only once, so audio stayed
+# off until reboot. pulse-daemon.conf raises the limit past the known cause;
+# this brings the daemon back if it dies anyway. It only waits, so it costs
+# nothing while the daemon runs. A stop passes on to $!, which a trap still
+# sees as the daemon forked just before it; the pidfile then names that daemon
+# so stop_pulseaudio can give it the usual grace.
+supervise_pulseaudio() {
+    daemon_live=
+    trap '[ -z "$daemon_live" ] || { echo "$!" >"$OWNED_PULSE_PID"; kill "$!" 2>/dev/null; }; exit 0' TERM
+    cd / || exit 1
+    export PULSE_HOME=/userdata/.pulse
+    [ ! -f "$pa_daemon_cfg" ] || export PULSE_CONFIG="$pa_daemon_cfg"
+    quick_exits=0
+    while :; do
+        started="$(now_seconds)"
+        daemon_live=1
+        /usr/bin/pulseaudio "$@" >>"$LOG" 2>&1 &
+        echo "$!" >"$OWNED_PULSE_PID"
+        wait "$!"
+        status=$?
+        daemon_live=
+        if [ "$status" -gt 128 ]; then
+            how="killed by signal $((status - 128))"
+        else
+            how="exited with status $status"
+        fi
+        if [ $(( $(now_seconds) - started )) -lt "$PULSE_QUICK_EXIT_S" ]; then
+            quick_exits=$((quick_exits + 1))
+        else
+            quick_exits=0
+        fi
+        if [ "$quick_exits" -ge "$PULSE_QUICK_EXIT_LIMIT" ]; then
+            log_msg "pulseaudio $how; it keeps exiting soon after start, leaving it stopped"
+            exit 0
+        fi
+        sleep "$PULSE_RESTART_DELAY_S"
+        if pidof pulseaudio >/dev/null 2>&1; then
+            log_msg "pulseaudio $how; another pulseaudio is running, not restarting"
+            exit 0
+        fi
+        log_msg "pulseaudio $how; restarting"
+    done
+}
+
 start_pulseaudio_if_needed() {
     pidof pulseaudio >/dev/null 2>&1 && return 0
     if [ -x /usr/bin/pulseaudio ]; then
         umask 077
         pa_cfg="$PLATFORM_ROOT/defaults/pulse-default.pa"
+        pa_daemon_cfg="$PLATFORM_ROOT/defaults/pulse-daemon.conf"
         if [ -f "$pa_cfg" ]; then
             log_msg "starting pulseaudio (leaf config)"
-            PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio -nF "$pa_cfg" >>"$LOG" 2>&1 &
+            supervise_pulseaudio -nF "$pa_cfg" </dev/null >/dev/null 2>&1 &
         else
             log_msg "starting pulseaudio"
-            PULSE_HOME=/userdata/.pulse /usr/bin/pulseaudio >>"$LOG" 2>&1 &
+            supervise_pulseaudio </dev/null >/dev/null 2>&1 &
         fi
-        echo "$!" >"$OWNED_PULSE_PID"
+        PULSE_SUPERVISOR_PID=$!
     else
         log_msg "pulseaudio missing"
     fi
+}
+
+# stop_pulseaudio [POLLS]: the supervisor first, so nothing restarts the daemon,
+# then the daemon with POLLS x 50 ms to save its state.
+stop_pulseaudio() {
+    if [ -n "$PULSE_SUPERVISOR_PID" ]; then
+        stop_pid "$PULSE_SUPERVISOR_PID" 4
+        wait "$PULSE_SUPERVISOR_PID" 2>/dev/null || true
+        PULSE_SUPERVISOR_PID=
+    fi
+    stop_owned_process pulseaudio "$OWNED_PULSE_PID" "${1:-6}"
 }
 
 start_owned_loong() {
@@ -1583,7 +1647,7 @@ power_stop_workers() {
     # exit thaws any loong_light it froze.
     stop_remaining_processes_by_name jawaka-ledd
     stop_leaf_owned_loong
-    stop_owned_process pulseaudio "$OWNED_PULSE_PID"
+    stop_pulseaudio
     # The daemon has already waited for its game/finalizers and service groups.
     # A surviving writer makes the normal remount fail; never mask it with
     # emergency remount, lazy unmount or a force-power deadline.
@@ -1701,7 +1765,7 @@ pass_to_stock() {
     # daemon unconditionally; that one fails while Leaf's is alive, which would
     # leave Leaf's config and its SD session-log descriptors in the stock
     # session. Nothing waits on this path, so allow up to 2 s to save state.
-    stop_owned_process pulseaudio "$OWNED_PULSE_PID" 40
+    stop_pulseaudio 40
     stop_wifi_workers
     kill_stale_custom_launcher
     stop_leaf_owned_loong

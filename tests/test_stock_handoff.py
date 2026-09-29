@@ -57,7 +57,8 @@ class StockHandoffTests(unittest.TestCase):
         body = "\n".join([
             STUBS, MOCKS, f'OWNED_PULSE_PID="{self.pidfile}"',
             *(session_function(name) for name in (
-                "pid_running", "stop_pid", "stop_owned_process", "pass_to_stock")),
+                "pid_running", "stop_pid", "stop_owned_process", "stop_pulseaudio",
+                "pass_to_stock")),
             'pass_to_stock "exit-to-stock requested"',
         ])
         # Redirect only proc reads into fixtures; production has no test switch.
