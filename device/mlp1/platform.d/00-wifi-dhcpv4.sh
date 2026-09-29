@@ -21,7 +21,8 @@
 # saved profiles eligible for failover without letting them displace the
 # network just joined, and refreshing the lease on each link.
 # Its dhcp_retry_loop keeps asking for a lease while the link is up without
-# one, and drop_stale_dns clears the previous network's DNS servers.
+# one (and sleeps without polling while a lease is held), and drop_stale_dns
+# clears the previous network's DNS servers.
 
 IFACE="${UMRK_WIFI_IFACE:-wlan0}"
 WAIT_SECONDS="${UMRK_WIFI_DHCP_WAIT_SECONDS:-75}"
@@ -32,6 +33,11 @@ DHCP_RETRY_TRIES="${UMRK_WIFI_DHCP_RETRY_TRIES:-3}"
 DHCP_RETRY_POLL_SECONDS="${UMRK_WIFI_DHCP_RETRY_POLL_SECONDS:-5}"
 DHCP_RETRY_MIN_SECONDS="${UMRK_WIFI_DHCP_RETRY_MIN_SECONDS:-10}"
 DHCP_RETRY_MAX_SECONDS="${UMRK_WIFI_DHCP_RETRY_MAX_SECONDS:-120}"
+# One wake FIFO per retry loop, named by its PID; see wake_dhcp_retry.
+DHCP_RETRY_FIFO_PREFIX="${TMPDIR:-/tmp}/umrk-wifi-dhcp-retry"
+# udhcpc's own event script. renew_ipv4 runs udhcpc with this hook as its
+# script, which hands every event on to this one.
+UDHCPC_DEFAULT_SCRIPT="${UMRK_UDHCPC_DEFAULT_SCRIPT:-/usr/share/udhcpc/default.script}"
 RESOLV_CONF="${UMRK_RESOLV_CONF:-/etc/resolv.conf}"
 PIDFILE="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.pid"
 DHCP_LOCK="${TMPDIR:-/tmp}/umrk-wifi-dhcpv4.lock"
@@ -152,6 +158,25 @@ wifi_recovery_allowed() {
     return 0
 }
 
+# Our leases report their events back to this hook (see the udhcpc events at
+# the end), which is what lets the retry loop stop polling while one is held.
+# Only when this file can be run by udhcpc and has a stock script to hand the
+# work to; otherwise leases use udhcpc's default script and the loop polls.
+udhcpc_events_available() {
+    [ -x "$0" ] && [ -x "$UDHCPC_DEFAULT_SCRIPT" ]
+}
+
+# Tell every retry loop to look again: a lease request ended, or udhcpc lost
+# or was refused a lease. Opening a FIFO read-write never blocks, and a loop
+# holds its FIFO open only while it waits, so with none waiting the line is
+# discarded when this closes it.
+wake_dhcp_retry() {
+    for retry_fifo in "$DHCP_RETRY_FIFO_PREFIX".*.fifo; do
+        [ -p "$retry_fifo" ] || continue
+        echo wake 1<>"$retry_fifo" 2>/dev/null || true
+    done
+}
+
 worker_running() {
     case "$1" in ''|*[!0-9]*) return 1 ;; esac
     case "$(tr '\0' '\n' 2>/dev/null < "/proc/$1/cmdline")" in
@@ -179,8 +204,13 @@ renew_ipv4() (
     echo "wifi-dhcpv4: $1: requesting DHCPv4 lease on $IFACE${2:+ (attempt $2)}"
     kill_stale_udhcpc
     wifi_recovery_allowed || exit 0
-    udhcpc -t "$tries" -n -i "$IFACE" 9>&-
+    if udhcpc_events_available; then
+        udhcpc -t "$tries" -n -i "$IFACE" -s "$0" 9>&-
+    else
+        udhcpc -t "$tries" -n -i "$IFACE" 9>&-
+    fi
     rc=$?
+    wake_dhcp_retry
 
     if [ "$rc" -eq 0 ] && has_ipv4; then
         echo "wifi-dhcpv4: $1: IPv4 ready on $IFACE"
@@ -440,12 +470,37 @@ connection_event() {
 # other DHCP client is at it, keep asking, backing off from
 # DHCP_RETRY_MIN_SECONDS to DHCP_RETRY_MAX_SECONDS. Exits with its link watcher
 # (PID $1), which stops this loop's process group on a normal exit.
+#
+# While a lease is held there is nothing to retry, so the loop waits on its
+# FIFO instead of polling: a lease request ending, or udhcpc losing or being
+# refused a lease, wakes it (wake_dhcp_retry). An orphaned loop notices its
+# watcher is gone at the next wake.
 dhcp_retry_loop() {
+    retry_fifo=""
+    if udhcpc_events_available && command -v mkfifo >/dev/null 2>&1; then
+        retry_fifo="$DHCP_RETRY_FIFO_PREFIX.$$.fifo"
+        rm -f "$retry_fifo"
+        mkfifo -m 600 "$retry_fifo" 2>/dev/null || retry_fifo=""
+    fi
+    trap '[ -z "$retry_fifo" ] || rm -f "$retry_fifo"' EXIT
     trap 'exit 0' INT TERM
     delay="$DHCP_RETRY_MIN_SECONDS"
     waited=0
     attempt=0
     while worker_running "$1" --link-watch; do
+        if [ -n "$retry_fifo" ]; then
+            # Open before looking, so a wake sent in between is kept.
+            exec 3<>"$retry_fifo"
+            if has_ipv4; then
+                read -r _ <&3
+                exec 3<&-
+                delay="$DHCP_RETRY_MIN_SECONDS"
+                waited=0
+                attempt=0
+                continue
+            fi
+            exec 3<&-
+        fi
         sleep "$DHCP_RETRY_POLL_SECONDS"
         if wifi_off_intended || has_ipv4 ||
            [ "$(wpa_state)" != "COMPLETED" ] || [ -n "$(iface_udhcpc_pids)" ]; then
@@ -462,6 +517,7 @@ dhcp_retry_loop() {
         delay=$((delay * 2))
         [ "$delay" -le "$DHCP_RETRY_MAX_SECONDS" ] || delay="$DHCP_RETRY_MAX_SECONDS"
     done
+    [ -z "$retry_fifo" ] || rm -f "$retry_fifo"
 }
 
 stop_link_listener() {
@@ -546,6 +602,15 @@ case "${1:-}" in
         # Disconnects are deliberately passive, including the UI's Disconnect.
         [ "${2:-}" != CONNECTED ] || connection_event
         exit 0
+        ;;
+    deconfig|bound|renew|leasefail|nak)
+        # udhcpc runs this for its events when renew_ipv4 passes -s "$0". The
+        # stock script does the work; a lost or refused lease also wakes the
+        # retry loop.
+        "$UDHCPC_DEFAULT_SCRIPT" "$1"
+        rc=$?
+        case "$1" in deconfig|leasefail|nak) wake_dhcp_retry ;; esac
+        exit "$rc"
         ;;
     *) [ "$#" -eq 0 ] || exit 0 ;;
 esac
