@@ -9,16 +9,19 @@
 #      (0-255 -> -95..-1 dB), so it is the dominant loudness control. We pin it
 #      here and let the user-facing volume run through PulseAudio's *software*
 #      sink volume (the launcher's volume buttons call `pactl set-sink-volume`),
-#      which does NOT move this hardware element. 210 is the calibrated
-#      "comfortably loud" ceiling for the speaker; 252 (driver max) is painfully
-#      loud, ~167 is barely audible.
+#      which does NOT move this hardware element. 222 matches stock's loudest
+#      setting: loong_service writes a 0-14 level to /sys/kernel/rk817/volume
+#      and the kernel maps level 14 to DAC 222 (137 at level 1, +10 per level to
+#      5, then +5 per level), on the speaker and headphone paths alike. The
+#      earlier 210 left Leaf at 100% ~4.4 dB below stock's max; 252 (driver max)
+#      is ~11 dB above it.
 #   3. Raise the external speaker gate (/sys/kernel/powerCtrl/spk_ctl) during
 #      playback and drop it for wired headphones. jawakad owns this now
 #      (jw__mlp1_speaker_gate_sync in Jawaka's device_mlp1.c); it used to be a
 #      shell loop here that forked grep and sleep five times a second.
 
 amixer -c 1 cset numid=13 2 >/dev/null 2>&1        # Playback Path -> SPK
-amixer -c 1 cset numid=16 210,210 >/dev/null 2>&1  # DAC Playback Volume -> calibrated ceiling
+amixer -c 1 cset numid=16 222,222 >/dev/null 2>&1  # DAC Playback Volume -> stock max
 
 # A session restarted without a reboot can still have the old keeper loop
 # running, and it would fight jawakad over the gate.
