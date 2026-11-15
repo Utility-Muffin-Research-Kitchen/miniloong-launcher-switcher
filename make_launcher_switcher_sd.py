@@ -285,7 +285,7 @@ remount_root_rw() {
 
 assert_adb_pinned() {
     [ -x /usr/bin/adbd ] || fail "ADB support missing: /usr/bin/adbd"
-    [ -x /etc/init.d/S50usb-gadget.sh ] || fail "ADB support missing: /etc/init.d/S50usb-gadget.sh"
+    [ -x /usr/bin/usb-gadget ] || fail "ADB support missing: /usr/bin/usb-gadget"
     [ -f /etc/.usb_config ] || fail "ADB config missing: /etc/.usb_config"
 
     cfg="$(cat /etc/.usb_config 2>/dev/null | tr -d '\\r\\n')"

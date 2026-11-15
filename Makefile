@@ -13,7 +13,7 @@ PLATFORM_DIR := $(SYSTEM_DIR)/platforms/$(PLATFORM_ID)
 BUNDLE_DIR := $(PLATFORM_DIR)/launcher
 
 .PHONY: help sd-payload sd-payload-marked \
-        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test pulseaudio-supervisor-test shutdown-pause-test compositor-card-test wifi-resume-test \
+        runtime-env-fixtures release-version-test mount-stub-test storage-repair-test power-transition-test stock-handoff-test pulseaudio-supervisor-test shutdown-pause-test compositor-card-test wifi-resume-test usb-adb-test \
         bundled-themes-test boot-animation-test \
         adb-install-wrapper adb-uninstall-wrapper \
         adb-stage-sd-bundle adb-stage-sd-bundle-no-marker \
@@ -41,6 +41,7 @@ help:
 	@echo "  make bundled-themes-test                validate shipped themes reach the card"
 	@echo "  make boot-animation-test                validate uninstall restores the stock boot animation"
 	@echo "  make compositor-card-test               validate Weston never keeps an SD card from closing"
+	@echo "  make usb-adb-test                       validate the ADB pin and USB gadget start at boot"
 	@echo ""
 	@echo "Payload assembly and ADB staging live in Leaf: 'make -C ../Leaf stage-jawaka'."
 
@@ -91,6 +92,10 @@ mount-stub-test:
 	@sh -n device/umrk-mount-stubs device/S50leaf device/umrk-launcher-switcher-uninstall.sh
 	@tools/mount-stub-fixtures.sh
 	@python3 tests/test_release_version.py
+
+usb-adb-test:
+	@sh -n device/umrk-leaf-session
+	@python3 tests/test_usb_adb.py
 
 .PHONY: leftover-ledd-test
 leftover-ledd-test:
