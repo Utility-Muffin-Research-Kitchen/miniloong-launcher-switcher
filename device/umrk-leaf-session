@@ -411,11 +411,18 @@ loong_upgrade_looks_valid() {
     return 0
 }
 
+# Stock's loong_daemon::upgradeFromTfCard() reads /mnt/sdcard/loong_upgrade and
+# no other path. Handing the boot to stock for a trigger anywhere else would
+# keep every boot in stock while nothing ever runs it. The cards can swap mount
+# points across boots, so a trigger on the second card still runs on a boot
+# where its card is mounted at /mnt/sdcard; Leaf boots normally until then.
 stock_ota_present() {
-    for root in /mnt/sdcard "$SECONDARY_SD_MOUNT"; do
-        [ -n "$root" ] || continue
-        loong_upgrade_looks_valid "$root/loong_upgrade" && return 0
-    done
+    trigger="${STOCK_OTA_TRIGGER:-/mnt/sdcard/loong_upgrade}"
+    loong_upgrade_looks_valid "$trigger" && return 0
+    if [ -n "$SECONDARY_SD_MOUNT" ] &&
+        loong_upgrade_looks_valid "$SECONDARY_SD_MOUNT/loong_upgrade"; then
+        log_msg "ignoring $SECONDARY_SD_MOUNT/loong_upgrade: stock only runs $trigger"
+    fi
     return 1
 }
 

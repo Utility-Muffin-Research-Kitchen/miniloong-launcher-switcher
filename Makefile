@@ -65,6 +65,7 @@ power-transition-test:
 stock-handoff-test:
 	@sh -n device/umrk-leaf-session
 	@python3 tests/test_stock_handoff.py
+	@python3 tests/test_stock_ota_trigger.py
 
 pulseaudio-supervisor-test:
 	@sh -n device/umrk-leaf-session

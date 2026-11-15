@@ -86,6 +86,33 @@ count_boot_pngs() {
     printf '%s\n' "$count"
 }
 
+# True when the live boot animation is exactly the stock backup: same frame
+# count in each sequence, every backed-up frame identical, and the live cfg
+# identical to the saved one when there is a saved one.
+boot_animation_matches_backup() {
+    for seq in 0 1; do
+        [ "$(count_boot_pngs "$BOOT_DIR/$seq")" = "$(count_boot_pngs "$BOOT_STOCK_DIR/$seq")" ] || return 1
+        for frame in "$BOOT_STOCK_DIR/$seq/"*.png; do
+            [ -f "$frame" ] || continue
+            cmp -s "$frame" "$BOOT_DIR/$seq/${frame##*/}" || return 1
+        done
+    done
+    if [ -f "$BOOT_STOCK_CFG" ]; then
+        cmp -s "$BOOT_STOCK_CFG" "$BOOT_CFG" || return 1
+    fi
+    return 0
+}
+
+# Drop Leaf's bookkeeping and the backup it guarded. Only call this once the
+# live animation is known to be stock. A reinstall takes a new snapshot of
+# boot.stock from whatever is live at the time, so removing it costs nothing.
+drop_boot_backup() {
+    rm -f "$BOOT_STAMP" "$BOOT_STOCK_CFG" 2>/dev/null || true
+    rm -rf "$BOOT_STOCK_DIR" 2>/dev/null || true
+    rm -f "$BOOT_MODE" 2>/dev/null || true
+    sync
+}
+
 # Put the stock boot animation back. Leaf overwrites /loong/textures/boot on the
 # rootfs and keeps the originals in boot.stock, and umrk-leaf-session has a
 # restore of its own -- but that only runs from pass_to_stock(), and uninstall
@@ -104,7 +131,19 @@ restore_stock_boot_animation() {
 
     mode="$(cat "$BOOT_MODE" 2>/dev/null || true)"
     if [ "$mode" = "stock" ] && [ -d "$BOOT_STOCK_DIR" ]; then
-        log_msg "boot animation already stock"
+        # The session already put the stock frames back: pass_to_stock does
+        # that on every hand-off, including the installer boot that runs a
+        # recovery ZIP. There is nothing to copy, but the backup still has to
+        # go. Left behind, it makes the next install skip its snapshot, and
+        # after a stock OTA that changed the animation a later uninstall would
+        # restore the old one. Only drop it once the live files prove to be
+        # the same stock animation; otherwise keep it untouched.
+        if boot_animation_matches_backup; then
+            drop_boot_backup
+            log_msg "boot animation already stock; removed Leaf's backup"
+        else
+            log_msg "boot animation already stock but differs from the backup; keeping backup"
+        fi
         return 0
     fi
 
@@ -151,13 +190,8 @@ restore_stock_boot_animation() {
         return 1
     fi
 
-    # Restore confirmed: drop Leaf's bookkeeping and the backup it guarded. A
-    # reinstall re-snapshots boot.stock from whatever is live at the time, so
-    # removing it now costs nothing.
-    rm -f "$BOOT_STAMP" "$BOOT_STOCK_CFG" 2>/dev/null || true
-    rm -rf "$BOOT_STOCK_DIR" 2>/dev/null || true
-    rm -f "$BOOT_MODE" 2>/dev/null || true
-    sync
+    # Restore confirmed: drop Leaf's bookkeeping and the backup it guarded.
+    drop_boot_backup
 
     log_msg "restored stock boot animation"
     echo "restored stock boot animation"
