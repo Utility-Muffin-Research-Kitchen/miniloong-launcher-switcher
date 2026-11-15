@@ -419,9 +419,17 @@ stock_ota_present() {
     return 1
 }
 
+# USB ADB is pinned when /etc/.usb_config says usb_adb_en and is immutable;
+# stock picks the gadget functions from that file. LoongOS 1.4.0.52 removed
+# /etc/init.d/S50usb-gadget.sh and starts the gadget from S50loong, which Leaf
+# mode never runs. The script only passed its verb to /usr/bin/usb-gadget, which
+# every LoongOS release ships, so Leaf calls that directly.
+adb_tools_present() {
+    [ -x /usr/bin/adbd ] && [ -x /usr/bin/usb-gadget ]
+}
+
 adb_is_pinned() {
-    [ -x /usr/bin/adbd ] || return 1
-    [ -x /etc/init.d/S50usb-gadget.sh ] || return 1
+    adb_tools_present || return 1
     [ -f /etc/.usb_config ] || return 1
     cfg="$(cat /etc/.usb_config 2>/dev/null | tr -d '\r\n')"
     [ "$cfg" = "usb_adb_en" ] || return 1
@@ -441,10 +449,10 @@ remount_root_rw() {
     mount -o remount,rw /dev/root / 2>>"$LOG"
 }
 
+# Stock S40network deletes /etc/.usb_config on every boot unless it is
+# immutable, so a freshly flashed rootfs has none by now: write it anyway.
 pin_adb() {
-    [ -x /usr/bin/adbd ] || return 1
-    [ -x /etc/init.d/S50usb-gadget.sh ] || return 1
-    [ -f /etc/.usb_config ] || return 1
+    adb_tools_present || return 1
 
     remount_root_rw || return 1
     chattr -i /etc/.usb_config >/dev/null 2>&1 || true
@@ -646,8 +654,8 @@ wait_for_adbd() {
 
 start_usb_adb() {
     log_msg "starting usb gadget"
-    /etc/init.d/S50usb-gadget.sh start >>"$LOG" 2>&1 || {
-        log_msg "S50usb-gadget.sh start failed"
+    /usr/bin/usb-gadget start >>"$LOG" 2>&1 || {
+        log_msg "usb-gadget start failed"
         return 1
     }
     wait_for_adbd || {
