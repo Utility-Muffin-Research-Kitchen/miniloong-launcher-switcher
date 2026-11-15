@@ -114,7 +114,39 @@ echo "rc=$?"
         self.assertFalse((self.textures / ".umrk-boot-installed").exists())
         self.assertFalse((self.textures / "boot.cfg.stock.umrk").exists())
 
-    def test_already_stock_is_a_noop(self):
+    def write_live_stock_copy(self):
+        """Live animation equal to the backup, as pass_to_stock leaves it."""
+        for seq in ("0", "1"):
+            for frame in (self.stock / seq).iterdir():
+                shutil.copy(frame, self.boot / seq / frame.name)
+        saved = self.textures / "boot.cfg.stock.umrk"
+        if saved.exists():
+            shutil.copy(saved, self.textures / "boot.cfg")
+        (self.textures / ".umrk-boot-mode").write_text("stock\n")
+        (self.textures / ".umrk-boot-installed").write_text("")
+
+    def test_already_stock_drops_the_backup(self):
+        # The installer boot that runs a recovery ZIP passes through
+        # pass_to_stock first, which restores the frames and writes
+        # mode=stock. Uninstall then finds nothing to copy, but the backup and
+        # Leaf's bookkeeping must still go: a leftover boot.stock makes the
+        # next install skip its snapshot, so a later uninstall would bring
+        # back an animation from an older firmware.
+        self.write_stock_backup()
+        self.write_live_stock_copy()
+        result = self.run_restore()
+        self.assertIn("rc=0", result.stdout)
+        self.assertEqual(sorted(p.name for p in (self.boot / "0").iterdir()),
+                         ["0.png", "1.png", "2.png"], "live stock frames changed")
+        self.assertEqual((self.textures / "boot.cfg").read_text(), '{"dir":"stock"}')
+        self.assertFalse(self.stock.exists(), "stock backup left behind")
+        self.assertFalse((self.textures / "boot.cfg.stock.umrk").exists())
+        self.assertFalse((self.textures / ".umrk-boot-mode").exists())
+        self.assertFalse((self.textures / ".umrk-boot-installed").exists())
+
+    def test_already_stock_but_different_keeps_everything(self):
+        # mode=stock but the live frames are not the backup: something else
+        # wrote them. Leave both alone rather than guess which one is right.
         self.write_stock_backup()
         (self.textures / ".umrk-boot-mode").write_text("stock\n")
         (self.boot / "0/keep.png").write_text("untouched")
@@ -122,7 +154,24 @@ echo "rc=$?"
         self.assertIn("rc=0", result.stdout)
         self.assertTrue((self.boot / "0/keep.png").exists(),
                         "a stock device had its boot dir rewritten anyway")
-        self.assertTrue(self.stock.exists(), "stock backup removed on a no-op")
+        self.assertTrue(self.stock.exists(), "stock backup removed though live differs")
+
+    def test_already_stock_with_a_changed_cfg_keeps_the_backup(self):
+        self.write_stock_backup()
+        self.write_live_stock_copy()
+        (self.textures / "boot.cfg").write_text('{"dir":"something else"}')
+        result = self.run_restore()
+        self.assertIn("rc=0", result.stdout)
+        self.assertTrue(self.stock.exists(), "stock backup removed though boot.cfg differs")
+        self.assertTrue((self.textures / "boot.cfg.stock.umrk").exists())
+
+    def test_already_stock_with_a_changed_frame_keeps_the_backup(self):
+        self.write_stock_backup()
+        self.write_live_stock_copy()
+        (self.boot / "1/0.png").write_text("not the stock frame")
+        result = self.run_restore()
+        self.assertIn("rc=0", result.stdout)
+        self.assertTrue(self.stock.exists(), "stock backup removed though a frame differs")
 
     def test_missing_backup_does_not_fail_the_uninstall(self):
         # Nothing was ever replaced, or the backup is gone. Returning non-zero
